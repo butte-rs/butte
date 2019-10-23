@@ -9,7 +9,7 @@ pub enum Schema {
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub struct Include(String);
+pub struct Include(pub(crate) StringConstant);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Body {
@@ -17,8 +17,8 @@ pub enum Body {
     ProductType(ProductType), // type_decl in the grammar
     Enum(Enum),
     Root(Ident),
-    FileExtension(String),
-    FileIdentifier(String),
+    FileExtension(StringConstant),
+    FileIdentifier(StringConstant),
     Attribute(Attribute),
     Rpc(Rpc),
     Object(Object),
@@ -149,6 +149,4 @@ pub enum Value {
 pub type Ident = String;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-}
+mod tests {}
