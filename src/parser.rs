@@ -60,9 +60,39 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_ident() {
+    fn test_underscore_prefix() {
+        let result = ident(b"_foo");
+        assert_eq!(result, Ok((&b""[..], "_foo".to_owned())));
+    }
+
+    #[test]
+    fn test_just_underscore() {
+        let result = ident(b"_");
+        assert_eq!(result, Ok((&b""[..], "_".to_owned())));
+    }
+
+    #[test]
+    fn test_id_with_number() {
+        let result = ident(b"foo1");
+        assert_eq!(result, Ok((&b""[..], "foo1".to_owned())));
+    }
+
+    #[test]
+    fn test_invalid_ident_contains_valid() {
         let result = ident(b"1foo");
-        assert!(result.is_err())
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_just_number_is_invalid() {
+        let result = ident(b"1");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_empty_ident() {
+        let result = ident(b"");
+        assert!(result.is_err());
     }
 
     #[test]
