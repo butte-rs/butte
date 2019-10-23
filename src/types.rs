@@ -104,7 +104,7 @@ pub enum Type {
     Float32,
     Float64,
     String,
-    Array(Vec<Box<Type>>),
+    Array(Vec<Type>),
     Ident(Ident),
 }
 
@@ -143,7 +143,7 @@ pub enum SingleValue {
 pub enum Value {
     SingleValue(SingleValue),
     Object(Object),
-    Values(Vec<Box<Value>>),
+    Values(Vec<Value>),
 }
 
 pub type Ident = String;
