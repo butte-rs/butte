@@ -25,7 +25,7 @@ pub enum Body {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Namespace(Vec<Ident>);
+pub struct Namespace(pub(crate) Vec<Ident>);
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct Attribute(Ident);

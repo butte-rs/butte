@@ -1,9 +1,10 @@
-use crate::types::{Ident, Include, StringConstant};
+use crate::types::{Ident, Include, Namespace, StringConstant};
 use nom::{
     branch::alt,
     bytes::complete::{escaped, is_a, tag, take_while, take_while_m_n},
     character::complete::none_of,
     combinator::{opt, recognize},
+    multi::separated_nonempty_list,
     sequence::{delimited, preceded, tuple},
     IResult,
 };
@@ -44,6 +45,19 @@ pub fn include(input: &str) -> IResult<&str, Include> {
     )(input)?;
 
     Ok((input, Include(path)))
+}
+
+pub fn namespace(input: &str) -> IResult<&str, Namespace> {
+    let (input, (_, pieces, _)) = delimited(
+        tag("namespace"),
+        tuple((
+            is_a(WHITESPACE),
+            separated_nonempty_list(tag("."), ident),
+            opt(is_a(WHITESPACE)),
+        )),
+        tag(";"),
+    )(input)?;
+    Ok((input, Namespace(pieces)))
 }
 
 #[cfg(test)]
@@ -114,5 +128,14 @@ mod tests {
     fn test_include_trailing_whitespace() {
         let result = include("include \"foo\"    ;");
         assert_eq!(result, Ok(("", Include("foo".to_owned()))));
+    }
+
+    #[test]
+    fn test_simple_namespace() {
+        let result = namespace("namespace a.b;");
+        assert_eq!(
+            result,
+            Ok(("", Namespace(vec!["a".to_owned(), "b".to_owned()])))
+        );
     }
 }
