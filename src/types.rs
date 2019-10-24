@@ -3,39 +3,45 @@
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Schema {
-    Includes(Vec<Include>), // zero or more
-    Body(Vec<Body>),        // zero or more
+pub struct Schema {
+    pub(crate) includes: Vec<Include>, // zero or more
+    pub(crate) body: Vec<Element>,     // zero or more
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct Include(pub(crate) StringConstant);
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Body {
+pub enum Element {
     Namespace(Namespace),
     ProductType(ProductType), // type_decl in the grammar
     Enum(Enum),
-    Root(Ident),
-    FileExtension(StringConstant),
-    FileIdentifier(StringConstant),
+    Root(Root),
+    FileExtension(FileExtension),
+    FileIdentifier(FileIdentifier),
     Attribute(Attribute),
     Rpc(Rpc),
     Object(Object),
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Root(pub(crate) Ident);
+
+pub type FileExtension = String;
+pub type FileIdentifier = String;
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Namespace(pub(crate) Vec<Ident>);
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub struct Attribute(Ident);
+pub struct Attribute(pub(crate) Ident);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProductType {
-    kind: ProductKind,
-    name: Ident,
-    fields: Vec<Field>, // one or more
-    metadata: Metadata,
+    pub(crate) kind: ProductKind,
+    pub(crate) name: Ident,
+    pub(crate) fields: Vec<Field>, // one or more
+    pub(crate) metadata: Option<Metadata>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Hash)]
@@ -46,10 +52,10 @@ pub enum ProductKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Enum {
-    kind: EnumKind,
-    metadata: Metadata,
-    values: Vec<EnumVal>, // zero or more?
-    ident: Ident,
+    pub(crate) kind: EnumKind,
+    pub(crate) metadata: Option<Metadata>,
+    pub(crate) values: Vec<EnumVal>, // zero or more?
+    pub(crate) ident: Ident,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -60,24 +66,24 @@ pub enum EnumKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Field {
-    name: Ident,
-    ty: Type,
-    scalar: Option<Scalar>,
-    metadata: Metadata,
+    pub(crate) name: Ident,
+    pub(crate) ty: Type,
+    pub(crate) scalar: Option<Scalar>,
+    pub(crate) metadata: Option<Metadata>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Rpc {
-    name: Ident,
-    methods: Vec<RpcMethod>, // one or more
+    pub(crate) name: Ident,
+    pub(crate) methods: Vec<RpcMethod>, // one or more
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RpcMethod {
-    name: Ident,
-    request_type: Ident,
-    response_type: Ident,
-    metadata: Metadata,
+    pub(crate) name: Ident,
+    pub(crate) request_type: Ident,
+    pub(crate) response_type: Ident,
+    pub(crate) metadata: Option<Metadata>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -104,25 +110,22 @@ pub enum Type {
     Float32,
     Float64,
     String,
-    Array(Vec<Type>),
+    Array(Box<Type>),
     Ident(Ident),
 }
 
 pub type IntegerConstant = i64;
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub struct FloatingConstant(f64);
-
+pub type FloatingConstant = f64;
 pub type StringConstant = String;
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct EnumVal {
-    name: Ident,
-    value: Option<IntegerConstant>,
+    pub(crate) name: Ident,
+    pub(crate) value: Option<IntegerConstant>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Metadata(HashMap<Ident, Option<SingleValue>>);
+pub struct Metadata(pub(crate) HashMap<Ident, Option<SingleValue>>);
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Scalar {
@@ -131,7 +134,7 @@ pub enum Scalar {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Object(HashMap<Ident, Value>);
+pub struct Object(pub(crate) HashMap<Ident, Value>);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SingleValue {
