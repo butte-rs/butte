@@ -124,8 +124,7 @@ pub struct EnumVal {
     pub(crate) value: Option<IntegerConstant>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Metadata(pub(crate) HashMap<Ident, Option<SingleValue>>);
+pub type Metadata = HashMap<Ident, Option<SingleValue>>;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Scalar {
@@ -133,8 +132,7 @@ pub enum Scalar {
     Float(FloatingConstant),
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Object(pub(crate) HashMap<Ident, Value>);
+pub type Object = HashMap<Ident, Value>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SingleValue {
