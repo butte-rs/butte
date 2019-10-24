@@ -18,9 +18,46 @@ use nom::{
     IResult,
 };
 use std::collections::HashMap;
+use std::iter::FromIterator;
 
 fn plus_or_minus(input: &str) -> IResult<&str, &str> {
     alt((tag("-"), tag("+")))(input)
+}
+
+fn double_quote(input: &str) -> IResult<&str, &str> {
+    tag("\"")(input)
+}
+
+fn backslash(input: &str) -> IResult<&str, &str> {
+    tag("\\")(input)
+}
+
+fn left_paren(input: &str) -> IResult<&str, &str> {
+    tag("(")(input)
+}
+
+fn right_paren(input: &str) -> IResult<&str, &str> {
+    tag(")")(input)
+}
+
+fn left_brace(input: &str) -> IResult<&str, &str> {
+    tag("{")(input)
+}
+
+fn right_brace(input: &str) -> IResult<&str, &str> {
+    tag("}")(input)
+}
+
+fn colon(input: &str) -> IResult<&str, &str> {
+    tag(":")(input)
+}
+
+fn comma(input: &str) -> IResult<&str, &str> {
+    tag(",")(input)
+}
+
+fn semicolon(input: &str) -> IResult<&str, &str> {
+    tag(";")(input)
 }
 
 #[test]
@@ -88,15 +125,19 @@ fn test_empty_ident() {
 fn string_constant(input: &str) -> IResult<&str, StringConstant> {
     map(
         delimited(
-            tag("\""),
-            opt(escaped(none_of("\\\""), '\\', alt((tag("\\"), tag("\""))))),
-            tag("\""),
+            double_quote,
+            opt(escaped(
+                none_of("\\\""),
+                '\\',
+                alt((backslash, double_quote)),
+            )),
+            double_quote,
         ),
         |string| string.unwrap_or("").to_string(),
     )(input)
 }
 
-fn schema(input: &str) -> IResult<&str, Schema> {
+pub fn schema(input: &str) -> IResult<&str, Schema> {
     map(
         tuple((
             many0(delimited(many0(line_ending), include, many1(line_ending))),
@@ -153,10 +194,6 @@ fn test_include_no_prefix_whitespace() {
 fn test_include_trailing_whitespace() {
     let result = include("include \"foo\"    ;");
     assert_eq!(result, Ok(("", Include("foo".to_string()))));
-}
-
-fn semicolon(input: &str) -> IResult<&str, &str> {
-    tag(";")(input)
 }
 
 fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
@@ -218,31 +255,12 @@ fn test_quoted_attribute_decl() {
     assert_eq!(result, Ok(("", Attribute("a".to_string()))));
 }
 
-fn left_paren(input: &str) -> IResult<&str, &str> {
-    tag("(")(input)
-}
-
-fn right_paren(input: &str) -> IResult<&str, &str> {
-    tag(")")(input)
-}
-
-fn left_brace(input: &str) -> IResult<&str, &str> {
-    tag("{")(input)
-}
-
-fn right_brace(input: &str) -> IResult<&str, &str> {
-    tag("}")(input)
-}
-
 fn enum_decl(input: &str) -> IResult<&str, Enum> {
     map(
         tuple((
             alt((
                 map(
-                    tuple((
-                        preceded(tag("enum"), ident),
-                        preceded(tag(":"), ty),
-                    )),
+                    tuple((preceded(tag("enum"), ident), preceded(colon, ty))),
                     |(id, t)| (id, EnumKind::Enum(t)),
                 ),
                 map(preceded(tag("union"), ident), |id| (id, EnumKind::Union)),
@@ -250,7 +268,7 @@ fn enum_decl(input: &str) -> IResult<&str, Enum> {
             metadata,
             delimited(
                 left_brace,
-                separated_nonempty_list(tag(","), enumval_decl),
+                separated_nonempty_list(comma, enumval_decl),
                 right_brace,
             ),
         )),
@@ -285,7 +303,7 @@ fn field_decl(input: &str) -> IResult<&str, Field> {
     map(
         tuple((
             terminated(ident, space0),
-            preceded(tag(":"), preceded(space0, ty)),
+            preceded(colon, preceded(space0, ty)),
             opt(preceded(tag("="), scalar)),
             terminated(metadata, semicolon),
         )),
@@ -323,7 +341,7 @@ fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
                     right_paren,
                 ),
                 preceded(
-                    delimited(space0, tag(":"), space0),
+                    delimited(space0, colon, space0),
                     tuple((ident, preceded(space1, metadata))),
                 ),
             )),
@@ -341,27 +359,27 @@ fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
 fn ty(input: &str) -> IResult<&str, Type> {
     alt((
         alt((
-            map(tag("bool"), |_| (Type::Bool)),
-            map(tag("byte"), |_| (Type::Byte)),
-            map(tag("ubyte"), |_| (Type::UByte)),
-            map(tag("short"), |_| (Type::Short)),
-            map(tag("ushort"), |_| (Type::UShort)),
-            map(tag("int"), |_| (Type::Int)),
-            map(tag("uint"), |_| (Type::UInt)),
-            map(tag("float"), |_| (Type::Float)),
-            map(tag("long"), |_| (Type::Long)),
-            map(tag("ulong"), |_| (Type::ULong)),
-            map(tag("double"), |_| (Type::Double)),
-            map(tag("int8"), |_| (Type::Int8)),
-            map(tag("uint8"), |_| (Type::UInt8)),
-            map(tag("int16"), |_| (Type::Int16)),
-            map(tag("uint16"), |_| (Type::UInt16)),
-            map(tag("int32"), |_| (Type::Int32)),
-            map(tag("uint32"), |_| (Type::UInt32)),
-            map(tag("int64"), |_| (Type::Int64)),
-            map(tag("uint64"), |_| (Type::UInt64)),
-            map(tag("float32"), |_| (Type::Float32)),
-            map(tag("float64"), |_| (Type::Float64)),
+            map(tag("bool"), |_| Type::Bool),
+            map(tag("byte"), |_| Type::Byte),
+            map(tag("ubyte"), |_| Type::UByte),
+            map(tag("short"), |_| Type::Short),
+            map(tag("ushort"), |_| Type::UShort),
+            map(tag("int"), |_| Type::Int),
+            map(tag("uint"), |_| Type::UInt),
+            map(tag("float"), |_| Type::Float),
+            map(tag("long"), |_| Type::Long),
+            map(tag("ulong"), |_| Type::ULong),
+            map(tag("double"), |_| Type::Double),
+            map(tag("int8"), |_| Type::Int8),
+            map(tag("uint8"), |_| Type::UInt8),
+            map(tag("int16"), |_| Type::Int16),
+            map(tag("uint16"), |_| Type::UInt16),
+            map(tag("int32"), |_| Type::Int32),
+            map(tag("uint32"), |_| Type::UInt32),
+            map(tag("int64"), |_| Type::Int64),
+            map(tag("uint64"), |_| Type::UInt64),
+            map(tag("float32"), |_| Type::Float32),
+            map(tag("float64"), |_| Type::Float64),
         )),
         map(tag("string"), |_| Type::String),
         map(delimited(tag("["), ty, tag("]")), |t| {
@@ -380,20 +398,14 @@ fn enumval_decl(input: &str) -> IResult<&str, EnumVal> {
 fn metadata(input: &str) -> IResult<&str, Option<Metadata>> {
     opt(map(
         delimited(
-            tag("("),
+            left_paren,
             separated_list(
-                tag(","),
-                separated_pair(ident, tag(":"), opt(single_value)),
+                comma,
+                separated_pair(ident, colon, opt(single_value)),
             ),
-            tag(")"),
+            right_paren,
         ),
-        |values| {
-            let mut res = HashMap::new();
-            for (key, value) in values {
-                res.insert(key, value);
-            }
-            Metadata(res)
-        },
+        HashMap::from_iter,
     ))(input)
 }
 
@@ -407,20 +419,11 @@ fn scalar(input: &str) -> IResult<&str, Scalar> {
 fn object(input: &str) -> IResult<&str, Object> {
     map(
         delimited(
-            tag("{"),
-            separated_nonempty_list(
-                tag(","),
-                separated_pair(ident, tag(":"), value),
-            ),
-            tag("}"),
+            left_brace,
+            separated_nonempty_list(comma, separated_pair(ident, colon, value)),
+            right_brace,
         ),
-        |values| {
-            let mut res = HashMap::new();
-            for (key, value) in values {
-                res.insert(key, value);
-            }
-            Object(res)
-        },
+        HashMap::from_iter,
     )(input)
 }
 
