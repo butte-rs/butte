@@ -1,16 +1,11 @@
-use crate::types::{
-    Attribute, Element, Enum, EnumKind, EnumVal, Field, FileExtension,
-    FileIdentifier, FloatingConstant, Ident, Include, IntegerConstant,
-    Metadata, Namespace, Object, ProductKind, ProductType, Root, Rpc,
-    RpcMethod, Scalar, Schema, SingleValue, StringConstant, Type, Value,
-};
+use crate::types::*;
 use hexf_parse::parse_hexf64;
 use nom::{
     branch::alt,
     bytes::complete::{escaped, tag, take_while, take_while_m_n},
     character::complete::{
-        char, digit0, digit1, hex_digit0, hex_digit1, line_ending, multispace0,
-        multispace1, none_of, one_of, space0, space1,
+        char, digit0, digit1, hex_digit0, hex_digit1, multispace0, multispace1,
+        none_of, one_of, space0, space1,
     },
     combinator::{all_consuming, map, map_res, opt, recognize},
     multi::{many0, many1, separated_list, separated_nonempty_list},
@@ -76,32 +71,32 @@ fn ident(input: &str) -> IResult<&str, Ident> {
             take_while_m_n(1, 1, |c: char| c.is_alphabetic() || c == '_'),
             take_while(|c: char| c.is_alphanumeric() || c == '_'),
         )),
-        |name: &str| name.to_string(),
+        Ident,
     )(input)
 }
 
 #[test]
 fn test_simple_ident() {
     let result = ident("foo");
-    assert_eq!(result, Ok(("", "foo".to_string())));
+    assert_eq!(result, Ok(("", Ident("foo"))));
 }
 
 #[test]
 fn test_underscore_prefix() {
     let result = ident("_foo");
-    assert_eq!(result, Ok(("", "_foo".to_string())));
+    assert_eq!(result, Ok(("", Ident("_foo"))));
 }
 
 #[test]
 fn test_just_underscore() {
     let result = ident("_");
-    assert_eq!(result, Ok(("", "_".to_string())));
+    assert_eq!(result, Ok(("", Ident("_"))));
 }
 
 #[test]
 fn test_id_with_number() {
     let result = ident("foo1");
-    assert_eq!(result, Ok(("", "foo1".to_string())));
+    assert_eq!(result, Ok(("", Ident("foo1"))));
 }
 
 #[test]
@@ -122,7 +117,7 @@ fn test_empty_ident() {
     assert!(result.is_err());
 }
 
-fn string_constant(input: &str) -> IResult<&str, StringConstant> {
+fn string_constant(input: &str) -> IResult<&str, &str> {
     map(
         delimited(
             double_quote,
@@ -133,32 +128,105 @@ fn string_constant(input: &str) -> IResult<&str, StringConstant> {
             )),
             double_quote,
         ),
-        |string| string.unwrap_or("").to_string(),
+        |string| string.unwrap_or(""),
     )(input)
+}
+
+#[test]
+fn test_string_constant() {
+    let res = string_constant("\"a b c D \\\"z1\"");
+    assert_eq!(res, Ok(("", "a b c D \\\"z1")));
+}
+
+fn element(input: &str) -> IResult<&str, Element> {
+    alt((
+        map(namespace_decl, Element::Namespace),
+        map(type_decl, Element::ProductType),
+        map(enum_decl, Element::Enum),
+        map(root_decl, Element::Root),
+        map(file_extension_decl, Element::FileExtension),
+        map(file_identifier_decl, Element::FileIdentifier),
+        map(attribute_decl, Element::Attribute),
+        map(rpc_decl, Element::Rpc),
+        map(object, Element::Object),
+    ))(input)
 }
 
 pub fn schema(input: &str) -> IResult<&str, Schema> {
     map(
-        tuple((
-            many0(delimited(many0(line_ending), include, many1(line_ending))),
-            many0(delimited(
-                many0(line_ending),
-                alt((
-                    map(namespace_decl, Element::Namespace),
-                    map(type_decl, Element::ProductType),
-                    map(enum_decl, Element::Enum),
-                    map(root_decl, Element::Root),
-                    map(file_extension_decl, Element::FileExtension),
-                    map(file_identifier_decl, Element::FileIdentifier),
-                    map(attribute_decl, Element::Attribute),
-                    map(rpc_decl, Element::Rpc),
-                    map(object, Element::Object),
-                )),
-                many1(line_ending),
+        all_consuming(terminated(
+            tuple((
+                many0(delimited(multispace0, include, multispace0)),
+                many0(delimited(multispace0, element, multispace0)),
             )),
+            multispace0,
         )),
         |(includes, body)| Schema { includes, body },
     )(input)
+}
+
+#[test]
+fn test_includes_only_schema() {
+    let input = r#"include "a";
+include "b";
+
+
+include "foo/bar/baz.fbs";
+
+    "#;
+    let res = schema(input);
+    assert_eq!(
+        res,
+        Ok((
+            "",
+            Schema {
+                includes: vec![
+                    Include("a"),
+                    Include("b"),
+                    Include("foo/bar/baz.fbs")
+                ],
+                body: vec![]
+            }
+        ))
+    );
+}
+
+#[test]
+fn test_elements_only_schema() {
+    let input = "\
+table MyMessage {
+  message: string;
+  foo: float64 = 2;
+}";
+    let res = schema(input);
+    assert_eq!(
+        res,
+        Ok((
+            "",
+            Schema {
+                includes: vec![],
+                body: vec![Element::ProductType(ProductType {
+                    kind: ProductKind::Table,
+                    name: Ident("MyMessage"),
+                    metadata: None,
+                    fields: vec![
+                        Field {
+                            name: Ident("message"),
+                            ty: Type::String,
+                            scalar: None,
+                            metadata: None,
+                        },
+                        Field {
+                            name: Ident("foo"),
+                            ty: Type::Float64,
+                            scalar: Some(Scalar::Integer(2)),
+                            metadata: None
+                        }
+                    ]
+                })]
+            }
+        ))
+    );
 }
 
 fn include(input: &str) -> IResult<&str, Include> {
@@ -175,13 +243,13 @@ fn include(input: &str) -> IResult<&str, Include> {
 #[test]
 fn test_include() {
     let result = include("include \"foo\";");
-    assert_eq!(result, Ok(("", Include("foo".to_string()))));
+    assert_eq!(result, Ok(("", Include("foo"))));
 }
 
 #[test]
 fn test_include_prefix_whitespace() {
     let result = include("include     \"foo\";");
-    assert_eq!(result, Ok(("", Include("foo".to_string()))));
+    assert_eq!(result, Ok(("", Include("foo"))));
 }
 
 #[test]
@@ -193,7 +261,7 @@ fn test_include_no_prefix_whitespace() {
 #[test]
 fn test_include_trailing_whitespace() {
     let result = include("include \"foo\"    ;");
-    assert_eq!(result, Ok(("", Include("foo".to_string()))));
+    assert_eq!(result, Ok(("", Include("foo"))));
 }
 
 fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
@@ -214,10 +282,7 @@ fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
 #[test]
 fn test_simple_namespace_decl() {
     let result = namespace_decl("namespace a.b;");
-    assert_eq!(
-        result,
-        Ok(("", Namespace(vec!["a".to_string(), "b".to_string()])))
-    );
+    assert_eq!(result, Ok(("", Namespace(vec![Ident("a"), Ident("b")]))));
 }
 
 #[test]
@@ -225,10 +290,7 @@ fn test_nested_namespace_decl() {
     let result = namespace_decl("namespace a.b.c;");
     assert_eq!(
         result,
-        Ok((
-            "",
-            Namespace(vec!["a".to_string(), "b".to_string(), "c".to_string()])
-        ))
+        Ok(("", Namespace(vec![Ident("a"), Ident("b"), Ident("c")])))
     );
 }
 
@@ -236,7 +298,11 @@ fn attribute_decl(input: &str) -> IResult<&str, Attribute> {
     map(
         delimited(
             tag("attribute"),
-            delimited(multispace1, alt((ident, string_constant)), multispace0),
+            delimited(
+                multispace1,
+                alt((ident, map(string_constant, Ident))),
+                multispace0,
+            ),
             semicolon,
         ),
         Attribute,
@@ -246,13 +312,13 @@ fn attribute_decl(input: &str) -> IResult<&str, Attribute> {
 #[test]
 fn test_simple_attribute_decl() {
     let result = attribute_decl("attribute a;");
-    assert_eq!(result, Ok(("", Attribute("a".to_string()))));
+    assert_eq!(result, Ok(("", Attribute(Ident("a")))));
 }
 
 #[test]
 fn test_quoted_attribute_decl() {
     let result = attribute_decl("attribute \"a\";");
-    assert_eq!(result, Ok(("", Attribute("a".to_string()))));
+    assert_eq!(result, Ok(("", Attribute(Ident("a")))));
 }
 
 fn enum_decl(input: &str) -> IResult<&str, Enum> {
@@ -296,16 +362,19 @@ fn root_decl(input: &str) -> IResult<&str, Root> {
 #[test]
 fn test_root_decl() {
     let res = root_decl("root_type Foo;");
-    assert_eq!(res, Ok(("", Root("Foo".to_string()))));
+    assert_eq!(res, Ok(("", Root(Ident("Foo")))));
 }
 
 fn field_decl(input: &str) -> IResult<&str, Field> {
     map(
-        tuple((
-            terminated(ident, space0),
-            preceded(colon, preceded(space0, ty)),
-            opt(preceded(tag("="), scalar)),
-            terminated(metadata, semicolon),
+        all_consuming(terminated(
+            tuple((
+                terminated(ident, tuple((space0, colon, space0))),
+                ty,
+                opt(preceded(tuple((space0, tag("//"), space0)), scalar)),
+                metadata,
+            )),
+            tuple((space0, semicolon)),
         )),
         |(name, ty, scalar, metadata)| Field {
             name,
@@ -314,6 +383,24 @@ fn field_decl(input: &str) -> IResult<&str, Field> {
             metadata,
         },
     )(input)
+}
+
+#[test]
+fn test_field_decl() {
+    let input = "foo: float64 = 2;";
+    let res = field_decl(input);
+    assert_eq!(
+        res,
+        Ok((
+            "",
+            Field {
+                name: Ident("foo"),
+                ty: Type::Float64,
+                scalar: Some(Scalar::Integer(2)),
+                metadata: None,
+            }
+        ))
+    );
 }
 
 fn rpc_decl(input: &str) -> IResult<&str, Rpc> {
@@ -364,9 +451,6 @@ fn ty(input: &str) -> IResult<&str, Type> {
             map(tag("ubyte"), |_| Type::UByte),
             map(tag("short"), |_| Type::Short),
             map(tag("ushort"), |_| Type::UShort),
-            map(tag("int"), |_| Type::Int),
-            map(tag("uint"), |_| Type::UInt),
-            map(tag("float"), |_| Type::Float),
             map(tag("long"), |_| Type::Long),
             map(tag("ulong"), |_| Type::ULong),
             map(tag("double"), |_| Type::Double),
@@ -380,6 +464,9 @@ fn ty(input: &str) -> IResult<&str, Type> {
             map(tag("uint64"), |_| Type::UInt64),
             map(tag("float32"), |_| Type::Float32),
             map(tag("float64"), |_| Type::Float64),
+            map(tag("int"), |_| Type::Int),
+            map(tag("uint"), |_| Type::UInt),
+            map(tag("float"), |_| Type::Float),
         )),
         map(tag("string"), |_| Type::String),
         map(delimited(tag("["), ty, tag("]")), |t| {
@@ -405,14 +492,14 @@ fn metadata(input: &str) -> IResult<&str, Option<Metadata>> {
             ),
             right_paren,
         ),
-        HashMap::from_iter,
+        |values| Metadata(HashMap::from_iter(values)),
     ))(input)
 }
 
 fn scalar(input: &str) -> IResult<&str, Scalar> {
     alt((
-        map(float_constant, Scalar::Float),
         map(integer_constant, Scalar::Integer),
+        map(float_constant, Scalar::Float),
     ))(input)
 }
 
@@ -423,7 +510,7 @@ fn object(input: &str) -> IResult<&str, Object> {
             separated_nonempty_list(comma, separated_pair(ident, colon, value)),
             right_brace,
         ),
-        HashMap::from_iter,
+        |values| Object(HashMap::from_iter(values)),
     )(input)
 }
 
@@ -443,19 +530,19 @@ fn value(input: &str) -> IResult<&str, Value> {
 
 fn type_decl(input: &str) -> IResult<&str, ProductType> {
     map(
-        tuple((
+        all_consuming(tuple((
             alt((
                 map(tag("table"), |_| ProductKind::Table),
                 map(tag("struct"), |_| ProductKind::Struct),
             )),
-            delimited(space1, ident, space0),
-            metadata,
+            delimited(multispace1, ident, multispace0),
+            terminated(metadata, multispace0),
             delimited(
                 left_brace,
                 delimited(multispace0, many1(field_decl), multispace0),
                 right_brace,
             ),
-        )),
+        ))),
         |(kind, name, metadata, fields)| ProductType {
             kind,
             name,
@@ -467,7 +554,10 @@ fn type_decl(input: &str) -> IResult<&str, ProductType> {
 
 #[test]
 fn test_product_type() {
-    let table = "table HelloReply { message: string; }";
+    let table = "\
+table HelloReply {
+  message: string;
+}";
     let res = type_decl(table);
     assert_eq!(
         res,
@@ -475,9 +565,9 @@ fn test_product_type() {
             "",
             ProductType {
                 kind: ProductKind::Table,
-                name: "HelloReply".to_string(),
+                name: Ident("HelloReply"),
                 fields: vec![Field {
-                    name: "message".to_string(),
+                    name: Ident("message"),
                     ty: Type::String,
                     scalar: None,
                     metadata: None
@@ -795,65 +885,71 @@ fn test_integer_constant() {
 }
 
 fn file_extension_decl(input: &str) -> IResult<&str, FileExtension> {
-    delimited(
-        tag("file_extension"),
-        delimited(space0, string_constant, space0),
-        semicolon,
+    map(
+        delimited(
+            tag("file_extension"),
+            delimited(space0, string_constant, space0),
+            semicolon,
+        ),
+        FileExtension,
     )(input)
 }
 
 #[test]
 fn test_file_extension_decl() {
     let res = file_extension_decl("file_extension \"foo\";");
-    assert_eq!(res, Ok(("", "foo".to_string())));
+    assert_eq!(res, Ok(("", FileExtension("foo"))));
 }
 
 #[test]
 fn test_file_extension_decl_no_leading_space() {
     let res = file_extension_decl("file_extension\"foo\";");
-    assert_eq!(res, Ok(("", "foo".to_string())));
+    assert_eq!(res, Ok(("", FileExtension("foo"))));
 }
 
 #[test]
 fn test_file_extension_decl_trailing_space() {
     let res = file_extension_decl("file_extension \"foo\"  ;");
-    assert_eq!(res, Ok(("", "foo".to_string())));
+    assert_eq!(res, Ok(("", FileExtension("foo"))));
 }
 
 #[test]
 fn test_file_extension_decl_surrounding_space() {
     let res = file_extension_decl("file_extension   \"foo\"  ;");
-    assert_eq!(res, Ok(("", "foo".to_string())));
+    assert_eq!(res, Ok(("", FileExtension("foo"))));
 }
 
 fn file_identifier_decl(input: &str) -> IResult<&str, FileIdentifier> {
-    delimited(
-        tag("file_identifier"),
-        delimited(space0, string_constant, space0),
-        semicolon,
+    map(
+        delimited(
+            tag("file_identifier"),
+            delimited(space0, string_constant, space0),
+            semicolon,
+        ),
+        FileIdentifier,
     )(input)
 }
 
 #[test]
 fn test_file_identifier_decl() {
     let res = file_identifier_decl("file_identifier \"foo\";");
-    assert_eq!(res, Ok(("", "foo".to_string())));
+    assert_eq!(res, Ok(("", FileIdentifier("foo"))));
 }
 
 #[test]
 fn test_file_identifier_decl_no_leading_space() {
     let res = file_identifier_decl("file_identifier\"foo\";");
-    assert_eq!(res, Ok(("", "foo".to_string())));
+    assert_eq!(res, Ok(("", FileIdentifier("foo"))));
 }
 
 #[test]
 fn test_file_identifier_decl_trailing_space() {
     let res = file_identifier_decl("file_identifier \"foo\"  ;");
-    assert_eq!(res, Ok(("", "foo".to_string())));
+    assert_eq!(res, Ok(("", FileIdentifier("foo"))));
 }
 
 #[test]
 fn test_file_identifier_decl_surrounding_space() {
     let res = file_identifier_decl("file_identifier   \"foo\"  ;");
-    assert_eq!(res, Ok(("", "foo".to_string())));
+    assert_eq!(res, Ok(("", FileIdentifier("foo"))));
 }
