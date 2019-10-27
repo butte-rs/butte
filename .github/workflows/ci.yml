@@ -4,13 +4,9 @@ on: [push]
 jobs:
   build:
     name: Cargo Test
-    # This job runs on Linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - name: 'ls the things'
-        run: ls
-      - name: 'ls more of the things'
-        run: ls ..
+      - name: 'Checkout the code'
+        uses: actions/checkout@v1
       - name: 'Cargo test'
         run: cargo test
