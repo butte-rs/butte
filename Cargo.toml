@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Phillip Cloud <cloud@standard.ai>"]
 description = "A Rust-native flatbuffer parser and code generator"
 license = "MIT"
-repository = "https://github.com/cpcloud/butte"
+repository = "https://github.com/flatbutte/butte"
 readme = "README.md"
 keywords = ["parsing", "data", "file-formats"]
 categories = ["parsing", "data", "file-formats"]
@@ -13,5 +13,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nom = "5.0.1"
 hexf-parse = "0.1.0"
+
+[dependencies.nom]
+version = "5.0.1"
+features = ["regexp", "lexical"]
