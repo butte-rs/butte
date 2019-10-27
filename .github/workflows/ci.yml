@@ -1,0 +1,11 @@
+name: Butte
+on: [push]
+
+jobs:
+  build:
+    name: Cargo Test
+    # This job runs on Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Cargo test'
+        run: cargo test
