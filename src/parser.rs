@@ -599,18 +599,9 @@ table HelloReply {
                 kind: ProductKind::Table,
                 name: Ident("HelloReply"),
                 fields: vec![
-                    Field {
-                        name: Ident("message"),
-                        ty: Type::String,
-                        scalar: None,
-                        metadata: None
-                    },
-                    Field {
-                        name: Ident("foo"),
-                        ty: Type::UInt,
-                        scalar: Some(Scalar::Float(3.0)),
-                        metadata: None,
-                    }
+                    Field::new(Ident("message"), Type::String),
+                    Field::new(Ident("foo"), Type::UInt,)
+                        .with_scalar(Scalar::Float(3.0))
                 ],
                 metadata: None
             }
@@ -632,12 +623,7 @@ table HelloReply {
             ProductType {
                 kind: ProductKind::Table,
                 name: Ident("HelloReply"),
-                fields: vec![Field {
-                    name: Ident("message"),
-                    ty: Type::String,
-                    scalar: None,
-                    metadata: None
-                }],
+                fields: vec![Field::new(Ident("message"), Type::String)],
                 metadata: None
             }
         ))
