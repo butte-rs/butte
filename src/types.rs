@@ -75,6 +75,35 @@ pub struct Field<'a> {
     pub(crate) metadata: Option<Metadata<'a>>,
 }
 
+impl<'a> Field<'a> {
+    pub fn new(name: Ident<'a>, ty: Type<'a>) -> Self {
+        Self {
+            name,
+            ty,
+            scalar: None,
+            metadata: None,
+        }
+    }
+
+    pub fn with_scalar(self, scalar: Scalar) -> Self {
+        Self {
+            name: self.name,
+            ty: self.ty,
+            scalar: Some(scalar),
+            metadata: self.metadata,
+        }
+    }
+
+    pub fn with_metadata(self, metadata: Metadata<'a>) -> Self {
+        Self {
+            name: self.name,
+            ty: self.ty,
+            scalar: self.scalar,
+            metadata: Some(metadata),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Rpc<'a> {
     pub(crate) name: Ident<'a>,
