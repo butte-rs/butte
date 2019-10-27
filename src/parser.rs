@@ -194,6 +194,7 @@ fn element(input: &str) -> IResult<&str, Element> {
     ))(input)
 }
 
+/// Parse a flatbuffer schema.
 pub fn schema(input: &str) -> IResult<&str, Schema> {
     map(
         terminated(
@@ -203,7 +204,9 @@ pub fn schema(input: &str) -> IResult<&str, Schema> {
             )),
             multispace0,
         ),
-        |(includes, body)| Schema { includes, body },
+        |(includes, body)| {
+            Schema::builder().includes(includes).body(body).build()
+        },
     )(input)
 }
 
@@ -215,17 +218,22 @@ table MyMessage {
   foo: float64 = 2;
 }";
     let result = schema(input);
-    let expected = Schema {
-        includes: vec![],
-        body: vec![Element::ProductType(table(
+    let expected = Schema::builder()
+        .body(vec![Element::ProductType(table(
             Ident("MyMessage"),
             vec![
-                Field::new(Ident("message"), Type::String),
-                Field::new(Ident("foo"), Type::Float64)
-                    .with_scalar(Scalar::Integer(2)),
+                Field::builder()
+                    .name(Ident("message"))
+                    .ty(Type::String)
+                    .build(),
+                Field::builder()
+                    .name(Ident("foo"))
+                    .ty(Type::Float64)
+                    .scalar(Scalar::Integer(2))
+                    .build(),
             ],
-        ))],
-    };
+        ))])
+        .build();
     assert_successful_parse!(result, expected);
 }
 
@@ -239,10 +247,91 @@ include "foo/bar/baz.fbs";
 
     "#;
     let result = schema(input);
-    let expected = Schema {
-        includes: vec![Include("a"), Include("b"), Include("foo/bar/baz.fbs")],
-        body: vec![],
-    };
+    let expected = Schema::builder()
+        .includes(vec![Include("a"), Include("b"), Include("foo/bar/baz.fbs")])
+        .build();
+    assert_successful_parse!(result, expected);
+}
+
+#[test]
+fn test_full_schema() {
+    let input = "\
+table HelloReply {
+  message:string;
+}
+
+table HelloRequest {
+  name:string;
+}
+
+table ManyHellosRequest {
+  name:string;
+  num_greetings:int;
+}
+
+rpc_service Greeter {
+  SayHello(HelloRequest):HelloReply;
+  SayManyHellos(ManyHellosRequest):HelloReply (streaming: \"server\");
+}
+
+";
+    let result = schema(input);
+    let expected = Schema::builder()
+        .body(vec![
+            Element::ProductType(table(
+                Ident("HelloReply"),
+                vec![Field::builder()
+                    .name(Ident("message"))
+                    .ty(Type::String)
+                    .build()],
+            )),
+            Element::ProductType(table(
+                Ident("HelloRequest"),
+                vec![Field::builder()
+                    .name(Ident("name"))
+                    .ty(Type::String)
+                    .build()],
+            )),
+            Element::ProductType(table(
+                Ident("ManyHellosRequest"),
+                vec![
+                    Field::builder()
+                        .name(Ident("name"))
+                        .ty(Type::String)
+                        .build(),
+                    Field::builder()
+                        .name(Ident("num_greetings"))
+                        .ty(Type::Int)
+                        .build(),
+                ],
+            )),
+            Element::Rpc(
+                Rpc::builder()
+                    .name(Ident("Greeter"))
+                    .methods(vec![
+                        RpcMethod::builder()
+                            .name(Ident("SayHello"))
+                            .request_type(Ident("HelloRequest"))
+                            .response_type(Ident("HelloReply"))
+                            .build(),
+                        RpcMethod::builder()
+                            .name(Ident("SayManyHellos"))
+                            .request_type(Ident("ManyHellosRequest"))
+                            .response_type(Ident("HelloReply"))
+                            .metadata(Some(Metadata(HashMap::from_iter(vec![
+                                (
+                                    Ident("streaming"),
+                                    Some(SingleValue::StringConstant(
+                                        "streaming",
+                                    )),
+                                ),
+                            ]))))
+                            .build(),
+                    ])
+                    .build(),
+            ),
+        ])
+        .build();
     assert_successful_parse!(result, expected);
 }
 
@@ -423,8 +512,11 @@ fn field_decl(input: &str) -> IResult<&str, Field> {
 fn test_field_decl() {
     let input = "foo: float64 = 2;";
     let result = field_decl(input);
-    let expected =
-        Field::new(Ident("foo"), Type::Float64).with_scalar(Scalar::Integer(2));
+    let expected = Field::builder()
+        .name(Ident("foo"))
+        .ty(Type::Float64)
+        .scalar(Scalar::Integer(2))
+        .build();
     assert_successful_parse!(result, expected);
 }
 
@@ -432,8 +524,11 @@ fn test_field_decl() {
 fn test_field_decl_uint() {
     let input = "foo :uint=3.0;";
     let result = field_decl(input);
-    let expected =
-        Field::new(Ident("foo"), Type::UInt).with_scalar(Scalar::Float(3.0));
+    let expected = Field::builder()
+        .name(Ident("foo"))
+        .ty(Type::UInt)
+        .scalar(Scalar::Float(3.0))
+        .build();
     assert_successful_parse!(result, expected);
 }
 
@@ -441,7 +536,10 @@ fn test_field_decl_uint() {
 fn test_field_decl_no_scalar() {
     let input = "foo:float64    ;";
     let result = field_decl(input);
-    let expected = Field::new(Ident("foo"), Type::Float64);
+    let expected = Field::builder()
+        .name(Ident("foo"))
+        .ty(Type::Float64)
+        .build();
     assert_successful_parse!(result, expected);
 }
 
@@ -458,7 +556,7 @@ fn rpc_decl(input: &str) -> IResult<&str, Rpc> {
                 right_brace,
             ),
         )),
-        |(name, methods)| Rpc::new(name, methods),
+        |(name, methods)| Rpc::builder().name(name).methods(methods).build(),
     )(input)
 }
 
@@ -469,15 +567,15 @@ rpc_service Greeter {
   SayHello(HelloRequest):HelloReply;
 }";
     let result = rpc_decl(input);
-    let expected = Rpc::new(
-        Ident("Greeter"),
-        vec![RpcMethod {
+    let expected = Rpc::builder()
+        .name(Ident("Greeter"))
+        .methods(vec![RpcMethod {
             name: Ident("SayHello"),
             request_type: Ident("HelloRequest"),
             response_type: Ident("HelloReply"),
             metadata: None,
-        }],
-    );
+        }])
+        .build();
     assert_successful_parse!(result, expected);
 }
 
@@ -489,9 +587,9 @@ rpc_service Greeter {
   SayManyHellos(ManyHellosRequest):HelloReply(streaming:\"server\");
 }";
     let result = rpc_decl(input);
-    let expected = Rpc::new(
-        Ident("Greeter"),
-        vec![
+    let expected = Rpc::builder()
+        .name(Ident("Greeter"))
+        .methods(vec![
             RpcMethod {
                 name: Ident("SayHello"),
                 request_type: Ident("HelloRequest"),
@@ -507,8 +605,8 @@ rpc_service Greeter {
                     Some(SingleValue::StringConstant("server")),
                 )]))),
             },
-        ],
-    );
+        ])
+        .build();
     assert_successful_parse!(result, expected);
 }
 
@@ -592,7 +690,9 @@ fn enumval_decl(input: &str) -> IResult<&str, EnumVal> {
             preceded(equals, preceded(space0, integer_constant)),
         )),
     ));
-    map(parser, |(name, value)| EnumVal::new(name, value))(input)
+    map(parser, |(name, value)| {
+        EnumVal::builder().name(name).value(value).build()
+    })(input)
 }
 
 fn metadata(input: &str) -> IResult<&str, Option<Metadata>> {
@@ -825,11 +925,20 @@ table HelloReply
     let expected = table(
         Ident("HelloReply"),
         vec![
-            Field::new(Ident("message"), Type::String),
-            Field::new(Ident("foo"), Type::UInt)
-                .with_scalar(Scalar::Float(3.0)),
-            Field::new(Ident("bar"), Type::Array(Box::new(Type::Int8)))
-                .with_scalar(Scalar::Integer(423)),
+            Field::builder()
+                .name(Ident("message"))
+                .ty(Type::String)
+                .build(),
+            Field::builder()
+                .name(Ident("foo"))
+                .ty(Type::UInt)
+                .scalar(Scalar::Float(3.0))
+                .build(),
+            Field::builder()
+                .name(Ident("bar"))
+                .ty(Type::Array(Box::new(Type::Int8)))
+                .scalar(Scalar::Integer(423))
+                .build(),
         ],
     );
     assert_successful_parse!(result, expected);
@@ -844,7 +953,10 @@ table HelloReply {
     let result = type_decl(input);
     let expected = table(
         Ident("HelloReply"),
-        vec![Field::new(Ident("message"), Type::String)],
+        vec![Field::builder()
+            .name(Ident("message"))
+            .ty(Type::String)
+            .build()],
     );
     assert_successful_parse!(result, expected);
 }

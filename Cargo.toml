@@ -13,3 +13,4 @@ edition = "2018"
 [dependencies]
 hexf-parse = "0.1.0"
 nom = { version = "5.0.1", features = ["regexp"] }
+typed-builder = "0.3.0"

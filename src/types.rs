@@ -1,11 +1,14 @@
 //! The types representing the parts of a flatbuffer schema
 
 use std::collections::HashMap;
+use typed_builder::TypedBuilder;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Schema<'a> {
-    pub(crate) includes: Vec<Include<'a>>, // zero or more
-    pub(crate) body: Vec<Element<'a>>,     // zero or more
+    #[builder(default)]
+    includes: Vec<Include<'a>>,
+    #[builder(default)]
+    body: Vec<Element<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -39,44 +42,30 @@ pub struct Namespace<'a>(pub(crate) Vec<Ident<'a>>);
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub struct Attribute<'a>(pub(crate) Ident<'a>);
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct ProductType<'a> {
     pub(crate) kind: ProductKind,
     pub(crate) name: Ident<'a>,
     pub(crate) fields: Vec<Field<'a>>, // one or more
+
+    #[builder(default)]
     pub(crate) metadata: Option<Metadata<'a>>,
 }
 
-impl<'a> ProductType<'a> {
-    pub fn new(
-        kind: ProductKind,
-        name: Ident<'a>,
-        fields: Vec<Field<'a>>,
-    ) -> Self {
-        Self {
-            kind,
-            name,
-            fields,
-            metadata: None,
-        }
-    }
-
-    pub fn with_metadata(self, metadata: Option<Metadata<'a>>) -> Self {
-        Self {
-            kind: self.kind,
-            name: self.name,
-            fields: self.fields,
-            metadata,
-        }
-    }
-}
-
 pub fn table<'a>(name: Ident<'a>, fields: Vec<Field<'a>>) -> ProductType<'a> {
-    ProductType::new(ProductKind::Table, name, fields)
+    ProductType::builder()
+        .kind(ProductKind::Table)
+        .name(name)
+        .fields(fields)
+        .build()
 }
 
 pub fn struct_<'a>(name: Ident<'a>, fields: Vec<Field<'a>>) -> ProductType<'a> {
-    ProductType::new(ProductKind::Struct, name, fields)
+    ProductType::builder()
+        .kind(ProductKind::Struct)
+        .name(name)
+        .fields(fields)
+        .build()
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Hash)]
@@ -99,60 +88,31 @@ pub enum EnumKind<'a> {
     Union,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Field<'a> {
     pub(crate) name: Ident<'a>,
     pub(crate) ty: Type<'a>,
+
+    #[builder(default)]
     pub(crate) scalar: Option<Scalar>,
+
+    #[builder(default)]
     pub(crate) metadata: Option<Metadata<'a>>,
 }
 
-impl<'a> Field<'a> {
-    pub fn new(name: Ident<'a>, ty: Type<'a>) -> Self {
-        Self {
-            name,
-            ty,
-            scalar: None,
-            metadata: None,
-        }
-    }
-
-    pub fn with_scalar(self, scalar: Scalar) -> Self {
-        Self {
-            name: self.name,
-            ty: self.ty,
-            scalar: Some(scalar),
-            metadata: self.metadata,
-        }
-    }
-
-    pub fn with_metadata(self, metadata: Metadata<'a>) -> Self {
-        Self {
-            name: self.name,
-            ty: self.ty,
-            scalar: self.scalar,
-            metadata: Some(metadata),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Rpc<'a> {
     name: Ident<'a>,
-    methods: Vec<RpcMethod<'a>>, // one or more
+    methods: Vec<RpcMethod<'a>>,
 }
 
-impl<'a> Rpc<'a> {
-    pub fn new(name: Ident<'a>, methods: Vec<RpcMethod<'a>>) -> Self {
-        Self { name, methods }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct RpcMethod<'a> {
     pub(crate) name: Ident<'a>,
     pub(crate) request_type: Ident<'a>,
     pub(crate) response_type: Ident<'a>,
+
+    #[builder(default)]
     pub(crate) metadata: Option<Metadata<'a>>,
 }
 
@@ -188,16 +148,12 @@ pub type IntegerConstant = i64;
 pub type FloatingConstant = f64;
 pub type BooleanConstant = bool;
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Hash, TypedBuilder)]
 pub struct EnumVal<'a> {
     name: Ident<'a>,
-    value: Option<IntegerConstant>,
-}
 
-impl<'a> EnumVal<'a> {
-    pub fn new(name: Ident<'a>, value: Option<IntegerConstant>) -> Self {
-        Self { name, value }
-    }
+    #[builder(default)]
+    value: Option<IntegerConstant>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
