@@ -9,5 +9,7 @@ jobs:
     steps:
       - name: 'ls the things'
         run: ls
+      - name: 'tree the things'
+        run: tree ..
       - name: 'Cargo test'
         run: cargo test
