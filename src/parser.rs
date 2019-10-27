@@ -1,5 +1,7 @@
 use crate::types::*;
 use hexf_parse::parse_hexf64;
+#[cfg(test)]
+use nom::error::ErrorKind;
 use nom::{
     self,
     branch::alt,
@@ -17,20 +19,33 @@ use std::collections::HashMap;
 use std::iter::FromIterator;
 use std::str::FromStr;
 
+#[cfg(test)]
+macro_rules! assert_failed_parse {
+    ($left:expr, $rest:expr, $error_kind:expr) => {
+        assert_eq!($left, Err(nom::Err::Error(($rest, $error_kind))))
+    };
+}
+
+#[cfg(test)]
+macro_rules! assert_successful_parse {
+    ($left:expr, $right:expr) => {
+        assert_eq!($left, Ok(("", $right)))
+    };
+}
+
 fn plus_or_minus(input: &str) -> IResult<&str, char> {
     one_of("-+")(input)
 }
 
 #[test]
 fn test_plus_or_minus() {
-    let res = plus_or_minus("+");
-    assert_eq!(res, Ok(("", '+')));
+    assert_successful_parse!(plus_or_minus("+"), '+');
+    assert_successful_parse!(plus_or_minus("-"), '-');
+}
 
-    let res = plus_or_minus("-");
-    assert_eq!(res, Ok(("", '-')));
-
-    let res = plus_or_minus("/");
-    assert!(res.is_err());
+#[test]
+fn test_invalid_plus_or_minus() {
+    assert_failed_parse!(plus_or_minus("/"), "/", ErrorKind::OneOf);
 }
 
 fn double_quote(input: &str) -> IResult<&str, char> {
@@ -81,6 +96,14 @@ fn zero(input: &str) -> IResult<&str, char> {
     char('0')(input)
 }
 
+fn left_square_bracket(input: &str) -> IResult<&str, char> {
+    char('[')(input)
+}
+
+fn right_square_bracket(input: &str) -> IResult<&str, char> {
+    char(']')(input)
+}
+
 fn ident(input: &str) -> IResult<&str, Ident> {
     map(
         recognize(preceded(
@@ -93,44 +116,39 @@ fn ident(input: &str) -> IResult<&str, Ident> {
 
 #[test]
 fn test_simple_ident() {
-    let result = ident("foo");
-    assert_eq!(result, Ok(("", Ident("foo"))));
+    assert_successful_parse!(ident("foo"), Ident("foo"));
 }
 
 #[test]
 fn test_underscore_prefix() {
-    let result = ident("_foo");
-    assert_eq!(result, Ok(("", Ident("_foo"))));
+    assert_successful_parse!(ident("_foo"), Ident("_foo"));
 }
 
 #[test]
 fn test_just_underscore() {
-    let result = ident("_");
-    assert_eq!(result, Ok(("", Ident("_"))));
+    assert_successful_parse!(ident("_"), Ident("_"));
 }
 
 #[test]
 fn test_id_with_number() {
-    let result = ident("foo1");
-    assert_eq!(result, Ok(("", Ident("foo1"))));
+    assert_successful_parse!(ident("foo1"), Ident("foo1"));
 }
 
 #[test]
 fn test_invalid_ident_contains_valid() {
-    let result = ident("1foo");
-    assert!(result.is_err());
+    assert_failed_parse!(ident("1foo"), "1foo", ErrorKind::TakeWhileMN);
 }
 
 #[test]
 fn test_number_is_invalid() {
     let result = ident("1");
-    assert!(result.is_err());
+    assert_failed_parse!(result, "1", ErrorKind::TakeWhileMN)
 }
 
 #[test]
 fn test_empty_ident_is_invalid() {
     let result = ident("");
-    assert!(result.is_err());
+    assert_failed_parse!(result, "", ErrorKind::TakeWhileMN)
 }
 
 fn string_constant(input: &str) -> IResult<&str, &str> {
@@ -150,14 +168,14 @@ fn string_constant(input: &str) -> IResult<&str, &str> {
 
 #[test]
 fn test_string_constant() {
-    let res = string_constant("\"a b c D \\\"z1\"");
-    assert_eq!(res, Ok(("", "a b c D \\\"z1")));
+    let result = string_constant("\"a b c D \\\"z1\"");
+    assert_successful_parse!(result, "a b c D \\\"z1");
 }
 
 #[test]
 fn test_empty_string_constant() {
-    let res = string_constant("\"\"");
-    assert_eq!(res, Ok(("", "")));
+    let result = string_constant("\"\"");
+    assert_successful_parse!(result, "");
 }
 
 fn element(input: &str) -> IResult<&str, Element> {
@@ -194,21 +212,19 @@ table MyMessage {
   message: string;
   foo: float64 = 2;
 }";
-    let res = schema(input);
+    let result = schema(input);
     let expected = Schema {
         includes: vec![],
-        body: vec![Element::ProductType(ProductType {
-            kind: ProductKind::Table,
-            name: Ident("MyMessage"),
-            metadata: None,
-            fields: vec![
+        body: vec![Element::ProductType(table(
+            Ident("MyMessage"),
+            vec![
                 Field::new(Ident("message"), Type::String),
                 Field::new(Ident("foo"), Type::Float64)
                     .with_scalar(Scalar::Integer(2)),
             ],
-        })],
+        ))],
     };
-    assert_eq!(res, Ok(("", expected)));
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
@@ -220,12 +236,12 @@ include "b";
 include "foo/bar/baz.fbs";
 
     "#;
-    let res = schema(input);
+    let result = schema(input);
     let expected = Schema {
         includes: vec![Include("a"), Include("b"), Include("foo/bar/baz.fbs")],
         body: vec![],
     };
-    assert_eq!(res, Ok(("", expected)));
+    assert_successful_parse!(result, expected);
 }
 
 fn include(input: &str) -> IResult<&str, Include> {
@@ -242,25 +258,28 @@ fn include(input: &str) -> IResult<&str, Include> {
 #[test]
 fn test_include() {
     let result = include("include \"foo\";");
-    assert_eq!(result, Ok(("", Include("foo"))));
+    let expected = Include("foo");
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
 fn test_include_prefix_whitespace() {
     let result = include("include     \"foo\";");
-    assert_eq!(result, Ok(("", Include("foo"))));
+    let expected = Include("foo");
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
 fn test_include_no_prefix_whitespace() {
     let result = include("include\"foo\";");
-    assert!(result.is_err());
+    assert_failed_parse!(result, "\"foo\";", ErrorKind::Space);
 }
 
 #[test]
 fn test_include_trailing_whitespace() {
     let result = include("include \"foo\"    ;");
-    assert_eq!(result, Ok(("", Include("foo"))));
+    let expected = Include("foo");
+    assert_successful_parse!(result, expected);
 }
 
 fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
@@ -278,21 +297,21 @@ fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
 fn test_one_level_namespace_decl() {
     let result = namespace_decl("namespace a;");
     let expected = Namespace(vec![Ident("a")]);
-    assert_eq!(result, Ok(("", expected)));
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
 fn test_two_level_namespace_decl() {
     let result = namespace_decl("namespace a.b;");
     let expected = Namespace(vec![Ident("a"), Ident("b")]);
-    assert_eq!(result, Ok(("", expected)));
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
 fn test_three_level_namespace_decl() {
     let result = namespace_decl("namespace a.b.c;");
     let expected = Namespace(vec![Ident("a"), Ident("b"), Ident("c")]);
-    assert_eq!(result, Ok(("", expected)));
+    assert_successful_parse!(result, expected);
 }
 
 fn attribute_decl(input: &str) -> IResult<&str, Attribute> {
@@ -313,13 +332,15 @@ fn attribute_decl(input: &str) -> IResult<&str, Attribute> {
 #[test]
 fn test_simple_attribute_decl() {
     let result = attribute_decl("attribute a;");
-    assert_eq!(result, Ok(("", Attribute(Ident("a")))));
+    let expected = Attribute(Ident("a"));
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
 fn test_quoted_attribute_decl() {
     let result = attribute_decl("attribute \"a\";");
-    assert_eq!(result, Ok(("", Attribute(Ident("a")))));
+    let expected = Attribute(Ident("a"));
+    assert_successful_parse!(result, expected);
 }
 
 fn enum_decl(input: &str) -> IResult<&str, Enum> {
@@ -368,8 +389,9 @@ fn root_decl(input: &str) -> IResult<&str, Root> {
 
 #[test]
 fn test_root_decl() {
-    let res = root_decl("root_type Foo;");
-    assert_eq!(res, Ok(("", Root(Ident("Foo")))));
+    let result = root_decl("root_type Foo;");
+    let expected = Root(Ident("Foo"));
+    assert_successful_parse!(result, expected);
 }
 
 fn field_decl(input: &str) -> IResult<&str, Field> {
@@ -398,58 +420,101 @@ fn field_decl(input: &str) -> IResult<&str, Field> {
 #[test]
 fn test_field_decl() {
     let input = "foo: float64 = 2;";
-    let res = field_decl(input);
-    assert_eq!(
-        res,
-        Ok((
-            "",
-            Field::new(Ident("foo"), Type::Float64)
-                .with_scalar(Scalar::Integer(2))
-        ))
-    );
+    let result = field_decl(input);
+    let expected =
+        Field::new(Ident("foo"), Type::Float64).with_scalar(Scalar::Integer(2));
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
 fn test_field_decl_uint() {
     let input = "foo :uint=3.0;";
-    let res = field_decl(input);
-    assert_eq!(
-        res,
-        Ok((
-            "",
-            Field::new(Ident("foo"), Type::UInt)
-                .with_scalar(Scalar::Float(3.0))
-        ))
-    );
+    let result = field_decl(input);
+    let expected =
+        Field::new(Ident("foo"), Type::UInt).with_scalar(Scalar::Float(3.0));
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
 fn test_field_decl_no_scalar() {
     let input = "foo:float64    ;";
-    let res = field_decl(input);
+    let result = field_decl(input);
     let expected = Field::new(Ident("foo"), Type::Float64);
-    assert_eq!(res, Ok(("", expected)));
+    assert_successful_parse!(result, expected);
 }
 
 fn rpc_decl(input: &str) -> IResult<&str, Rpc> {
     map(
         tuple((
-            preceded(tag("rpc_service"), preceded(space1, ident)),
+            preceded(
+                tag("rpc_service"),
+                delimited(multispace1, ident, multispace0),
+            ),
             delimited(
-                delimited(multispace1, left_brace, multispace0),
-                many1(rpc_method),
-                delimited(multispace1, right_brace, multispace0),
+                left_brace,
+                many1(delimited(multispace0, rpc_method, multispace0)),
+                right_brace,
             ),
         )),
-        |(name, methods)| Rpc { name, methods },
+        |(name, methods)| Rpc::new(name, methods),
     )(input)
+}
+
+#[test]
+fn test_rpc_decl_single_method() {
+    let input = "\
+rpc_service Greeter {
+  SayHello(HelloRequest):HelloReply;
+}";
+    let result = rpc_decl(input);
+    let expected = Rpc::new(
+        Ident("Greeter"),
+        vec![RpcMethod {
+            name: Ident("SayHello"),
+            request_type: Ident("HelloRequest"),
+            response_type: Ident("HelloReply"),
+            metadata: None,
+        }],
+    );
+    assert_successful_parse!(result, expected);
+}
+
+#[test]
+fn test_rpc_decl_multiple_methods() {
+    let input = "\
+rpc_service Greeter {
+  SayHello(HelloRequest):HelloReply;
+  SayManyHellos(ManyHellosRequest):HelloReply(streaming:\"server\");
+}";
+    let result = rpc_decl(input);
+    let expected = Rpc::new(
+        Ident("Greeter"),
+        vec![
+            RpcMethod {
+                name: Ident("SayHello"),
+                request_type: Ident("HelloRequest"),
+                response_type: Ident("HelloReply"),
+                metadata: None,
+            },
+            RpcMethod {
+                name: Ident("SayManyHellos"),
+                request_type: Ident("ManyHellosRequest"),
+                response_type: Ident("HelloReply"),
+                metadata: Some(Metadata(HashMap::from_iter(vec![(
+                    Ident("streaming"),
+                    Some(SingleValue::StringConstant("server")),
+                )]))),
+            },
+        ],
+    );
+    assert_successful_parse!(result, expected);
 }
 
 fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
     map(
         terminated(
             tuple((
-                terminated(ident, space1),
+                terminated(ident, space0),
                 delimited(
                     left_paren,
                     delimited(space0, ident, space0),
@@ -457,10 +522,10 @@ fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
                 ),
                 preceded(
                     delimited(space0, colon, space0),
-                    tuple((ident, preceded(space1, metadata))),
+                    tuple((ident, metadata)),
                 ),
             )),
-            preceded(space0, semicolon),
+            terminated(space0, semicolon),
         ),
         |(name, request_type, (response_type, metadata))| RpcMethod {
             name,
@@ -469,6 +534,19 @@ fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
             metadata,
         },
     )(input)
+}
+
+#[test]
+fn test_rpc_method() {
+    let input = "SayHello(HelloRequest):HelloReply;";
+    let result = rpc_method(input);
+    let expected = RpcMethod {
+        name: Ident("SayHello"),
+        request_type: Ident("HelloRequest"),
+        response_type: Ident("HelloReply"),
+        metadata: None,
+    };
+    assert_successful_parse!(result, expected);
 }
 
 fn ty(input: &str) -> IResult<&str, Type> {
@@ -505,23 +583,60 @@ fn ty(input: &str) -> IResult<&str, Type> {
 }
 
 fn enumval_decl(input: &str) -> IResult<&str, EnumVal> {
-    map(tuple((ident, opt(integer_constant))), |(name, value)| {
-        EnumVal { name, value }
-    })(input)
+    let parser = tuple((
+        ident,
+        opt(preceded(
+            space0,
+            preceded(equals, preceded(space0, integer_constant)),
+        )),
+    ));
+    map(parser, |(name, value)| EnumVal::new(name, value))(input)
 }
 
 fn metadata(input: &str) -> IResult<&str, Option<Metadata>> {
     opt(map(
         delimited(
-            left_paren,
+            terminated(left_paren, space0),
             separated_list(
-                comma,
-                separated_pair(ident, colon, opt(single_value)),
+                delimited(space0, comma, space0),
+                tuple((
+                    ident,
+                    opt(preceded(
+                        space0,
+                        preceded(colon, preceded(space0, single_value)),
+                    )),
+                )),
             ),
-            right_paren,
+            preceded(space0, right_paren),
         ),
         |values| Metadata(HashMap::from_iter(values)),
     ))(input)
+}
+
+#[test]
+fn test_simple_metadata() {
+    let input = "(a: \"b\")";
+    let result = metadata(input);
+    let expected = Some(Metadata(HashMap::from_iter(vec![(
+        Ident("a"),
+        Some(SingleValue::StringConstant("b")),
+    )])));
+    assert_successful_parse!(result, expected);
+}
+
+#[test]
+fn test_multiple_field_metadata() {
+    let input = "(x, a: \"news\", b: 42,c: 42.42, d, e)";
+    let result = metadata(input);
+    let expected = Some(Metadata(HashMap::from_iter(vec![
+        (Ident("x"), None),
+        (Ident("a"), Some(SingleValue::StringConstant("news"))),
+        (Ident("b"), Some(SingleValue::Scalar(Scalar::Integer(42)))),
+        (Ident("c"), Some(SingleValue::Scalar(Scalar::Float(42.42)))),
+        (Ident("d"), None),
+        (Ident("e"), None),
+    ])));
+    assert_successful_parse!(result, expected);
 }
 
 fn scalar(input: &str) -> IResult<&str, Scalar> {
@@ -534,17 +649,18 @@ fn scalar(input: &str) -> IResult<&str, Scalar> {
 fn object(input: &str) -> IResult<&str, Object> {
     map(
         delimited(
-            left_brace,
+            terminated(left_brace, multispace0),
             separated_nonempty_list(
-                comma,
-                separated_pair(ident, colon, value_),
+                delimited(space0, comma, space0),
+                separated_pair(ident, delimited(space0, colon, space0), value_),
             ),
-            right_brace,
+            preceded(multispace0, right_brace),
         ),
         |values| Object(HashMap::from_iter(values)),
     )(input)
 }
 
+/// `SingleValue`s are `Scalar`s or `StringConstant`s.
 fn single_value(input: &str) -> IResult<&str, SingleValue> {
     alt((
         map(scalar, SingleValue::Scalar),
@@ -552,11 +668,108 @@ fn single_value(input: &str) -> IResult<&str, SingleValue> {
     ))(input)
 }
 
+/// A value list is a comma-separated list of `Value`s.
+fn value_list(input: &str) -> IResult<&str, Vec<Value>> {
+    delimited(
+        terminated(left_square_bracket, space0),
+        separated_list(delimited(space0, comma, space0), value_),
+        preceded(space0, right_square_bracket),
+    )(input)
+}
+
+/// `Value`s are `SingleValue`s or `Object`s.
 fn value_(input: &str) -> IResult<&str, Value> {
     alt((
         map(single_value, Value::SingleValue),
         map(object, Value::Object),
+        map(value_list, Value::List),
     ))(input)
+}
+
+#[test]
+fn test_value_single_value() {
+    let result = value_("1");
+    assert_successful_parse!(
+        result,
+        Value::SingleValue(SingleValue::Scalar(Scalar::Integer(1)))
+    );
+
+    let result = value_("2.3");
+    assert_successful_parse!(
+        result,
+        Value::SingleValue(SingleValue::Scalar(Scalar::Float(2.3)))
+    );
+
+    let result = value_("\"abc d\"");
+    assert_successful_parse!(
+        result,
+        Value::SingleValue(SingleValue::StringConstant("abc d"))
+    );
+}
+
+#[test]
+fn test_value_object() {
+    let result = value_("{a: 1}");
+    assert_successful_parse!(
+        result,
+        Value::Object(Object(HashMap::from_iter(vec![(
+            Ident("a"),
+            Value::SingleValue(SingleValue::Scalar(Scalar::Integer(1)))
+        )])))
+    );
+
+    let result = value_("{b: 2.42}");
+    assert_successful_parse!(
+        result,
+        Value::Object(Object(HashMap::from_iter(vec![(
+            Ident("b"),
+            Value::SingleValue(SingleValue::Scalar(Scalar::Float(2.42)))
+        )])))
+    );
+
+    let result = value_("{c: [\"a\"]}");
+    assert_successful_parse!(
+        result,
+        Value::Object(Object(HashMap::from_iter(vec![(
+            Ident("c"),
+            Value::List(vec![Value::SingleValue(SingleValue::StringConstant(
+                "a"
+            ))])
+        )])))
+    );
+
+    // What kind of person would put this in a flatbuffer schema?
+    let result = value_("{d: [\"a\", {b: [1, [\"z\"]]}]}");
+    assert_successful_parse!(
+        result,
+        Value::Object(Object(HashMap::from_iter(vec![(
+            Ident("d"),
+            Value::List(vec![
+                Value::SingleValue(SingleValue::StringConstant("a")),
+                Value::Object(Object(HashMap::from_iter(vec![(
+                    Ident("b"),
+                    Value::List(vec![
+                        Value::SingleValue(SingleValue::Scalar(
+                            Scalar::Integer(1)
+                        )),
+                        Value::List(vec![Value::SingleValue(
+                            SingleValue::StringConstant("z")
+                        )])
+                    ])
+                )])))
+            ])
+        )])))
+    );
+}
+
+#[test]
+fn test_value_value_list() {
+    let result = value_("[\"a\", 1]");
+    let expected = Value::List(vec![
+        Value::SingleValue(SingleValue::StringConstant("a")),
+        Value::SingleValue(SingleValue::Scalar(Scalar::Integer(1))),
+    ]);
+    assert_successful_parse!(result, expected);
 }
 
 fn type_decl(input: &str) -> IResult<&str, ProductType> {
@@ -584,65 +797,58 @@ fn type_decl(input: &str) -> IResult<&str, ProductType> {
 }
 
 #[test]
-fn test_product_type_multiple_fields() {
-    let table = "\
-table HelloReply {
+fn test_table_multiple_fields() {
+    let input = "\
+table HelloReply
+{
   message: string;
   foo :uint=3.0;
+
+  bar :      [int8] =    423;
 }";
-    let res = type_decl(table);
-    assert_eq!(
-        res,
-        Ok((
-            "",
-            ProductType {
-                kind: ProductKind::Table,
-                name: Ident("HelloReply"),
-                fields: vec![
-                    Field::new(Ident("message"), Type::String),
-                    Field::new(Ident("foo"), Type::UInt,)
-                        .with_scalar(Scalar::Float(3.0))
-                ],
-                metadata: None
-            }
-        ))
+    let result = type_decl(input);
+    let expected = table(
+        Ident("HelloReply"),
+        vec![
+            Field::new(Ident("message"), Type::String),
+            Field::new(Ident("foo"), Type::UInt)
+                .with_scalar(Scalar::Float(3.0)),
+            Field::new(Ident("bar"), Type::Array(Box::new(Type::Int8)))
+                .with_scalar(Scalar::Integer(423)),
+        ],
     );
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
-fn test_product_type() {
-    let table = "\
+fn test_table() {
+    let input = "\
 table HelloReply {
   message: string;
 }";
-    let res = type_decl(table);
-    assert_eq!(
-        res,
-        Ok((
-            "",
-            ProductType {
-                kind: ProductKind::Table,
-                name: Ident("HelloReply"),
-                fields: vec![Field::new(Ident("message"), Type::String)],
-                metadata: None
-            }
-        ))
+    let result = type_decl(input);
+    let expected = table(
+        Ident("HelloReply"),
+        vec![Field::new(Ident("message"), Type::String)],
     );
+    assert_successful_parse!(result, expected);
 }
 
+/// A decimal integer constant
 fn dec_integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
-    map_res(recognize(preceded(opt(plus_or_minus), digit1)), |value| {
-        IntegerConstant::from_str_radix(value, 10)
-    })(input)
+    map_res(
+        recognize(preceded(opt(plus_or_minus), digit1)),
+        IntegerConstant::from_str,
+    )(input)
 }
 
 #[test]
 fn test_dec_integer_constant() {
-    let res = dec_integer_constant("1234");
-    assert_eq!(res, Ok(("", 1234)));
+    let result = dec_integer_constant("1234");
+    assert_successful_parse!(result, 1234);
 
-    let res = dec_integer_constant("-1234");
-    assert_eq!(res, Ok(("", -1234)));
+    let result = dec_integer_constant("-1234");
+    assert_successful_parse!(result, -1234);
 }
 
 fn hex_integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
@@ -671,14 +877,17 @@ fn hex_integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
 
 #[test]
 fn test_hex_integer_constant() {
-    let res = hex_integer_constant("0x1234ABCDEFabcdef");
-    assert_eq!(res, Ok(("", 0x1234ABCDEFabcdef)));
+    let result = hex_integer_constant("0x1234ABCDEFabcdef");
+    assert_successful_parse!(result, 0x1234ABCDEFabcdef);
 
-    let res = hex_integer_constant("-0x1234ABCDEFabcdef");
-    assert_eq!(res, Ok(("", -0x1234ABCDEFabcdef)));
+    let result = hex_integer_constant("-0x1234ABCDEFabcdef");
+    assert_successful_parse!(result, -0x1234ABCDEFabcdef);
+}
 
-    let res = hex_integer_constant("ABCDEFabcdef");
-    assert!(res.is_err());
+#[test]
+fn test_invalid_hex_integer_constant() {
+    let result = hex_integer_constant("ABCDEFabcdef");
+    assert_failed_parse!(result, "ABCDEFabcdef", ErrorKind::Char);
 }
 
 fn true_(input: &str) -> IResult<&str, bool> {
@@ -687,14 +896,14 @@ fn true_(input: &str) -> IResult<&str, bool> {
 
 #[test]
 fn test_true() {
-    let res = true_("true");
-    assert_eq!(res, Ok(("", true)));
+    let result = true_("true");
+    assert_successful_parse!(result, true);
 }
 
 #[test]
 fn test_invalid_true() {
-    let res = true_("truez");
-    assert!(res.is_err());
+    let result = true_("truez");
+    assert_failed_parse!(result, "truez", ErrorKind::RegexpMatch);
 }
 
 fn false_(input: &str) -> IResult<&str, bool> {
@@ -703,128 +912,164 @@ fn false_(input: &str) -> IResult<&str, bool> {
 
 #[test]
 fn test_false() {
-    let res = false_("false");
-    assert_eq!(res, Ok(("", false)));
+    let result = false_("false");
+    assert_successful_parse!(result, false);
 }
 
 #[test]
 fn test_invalid_false() {
-    let res = false_("falsez");
-    assert!(res.is_err());
+    let result = false_("falsez");
+    assert_failed_parse!(result, "falsez", ErrorKind::RegexpMatch);
 }
 
+/// TODO: Where can this be used in a schema?
 fn boolean_constant(input: &str) -> IResult<&str, bool> {
     alt((true_, false_))(input)
 }
 
 #[test]
 fn test_boolean_constant() {
-    let res = boolean_constant("true");
-    assert_eq!(res, Ok(("", true)));
+    let result = boolean_constant("true");
+    assert_successful_parse!(result, true);
 
-    let res = boolean_constant("false");
-    assert_eq!(res, Ok(("", false)));
+    let result = boolean_constant("false");
+    assert_successful_parse!(result, false);
 
-    let res = boolean_constant("waltz");
-    assert!(res.is_err());
+    let result = boolean_constant("waltz");
+    assert_failed_parse!(result, "waltz", ErrorKind::RegexpMatch);
 }
 
-fn floating_exponent(input: &str) -> IResult<&str, &str> {
+fn dec_float_exponent(input: &str) -> IResult<&str, &str> {
     recognize(tuple((one_of("eE"), opt(plus_or_minus), digit1)))(input)
 }
 
-// ([0-9](?:[0-9])*\.(?:[0-9](?:[0-9])*)?|\.[0-9](?:[0-9])*)
-// ([eE][-+]?[0-9](?:[0-9])*)?
-// |
-// [0-9](?:[0-9])*[eE][-+]?[0-9](?:[0-9])*
-fn floating_constant(input: &str) -> IResult<&str, FloatingConstant> {
-    let parser = alt((
-        recognize(terminated(
-            alt((
-                recognize(tuple((digit1, period, digit0))),
-                recognize(preceded(period, digit1)),
-            )),
-            opt(floating_exponent),
+// Taken from Python's tokenize.Floatnumber
+fn dec_float_constant(input: &str) -> IResult<&str, FloatingConstant> {
+    let parser = recognize(preceded(
+        opt(plus_or_minus),
+        alt((
+            terminated(
+                alt((
+                    terminated(digit1, terminated(period, digit0)),
+                    preceded(period, digit1),
+                )),
+                opt(dec_float_exponent),
+            ),
+            terminated(digit1, dec_float_exponent),
         )),
-        recognize(terminated(digit1, floating_exponent)),
     ));
-    map_res(recognize(parser), FloatingConstant::from_str)(input)
+    map_res(parser, FloatingConstant::from_str)(input)
 }
 
-/// A float constant is either a special float constant, a hex float constant or a double
+#[test]
+fn test_dec_float_constant() {
+    let result = dec_float_constant("-2.1");
+    assert_successful_parse!(result, -2.1);
+}
+
+/// A float constant is either a special float constant (nan, inf, or infinity), a hex float
+/// constant or a double.
 fn float_constant(input: &str) -> IResult<&str, FloatingConstant> {
     alt((
         special_float_constant,
         hex_float_constant,
-        floating_constant,
+        dec_float_constant,
     ))(input)
 }
 
 #[test]
 fn test_float_constant_nan() {
-    let res = float_constant("nan");
+    let result = float_constant("nan");
     assert_eq!(
-        res.map(|(input, value)| (
+        result.map(|(input, value)| (
             input,
-            value.is_nan() && value.is_sign_positive()
+            value.is_nan(),
+            value.is_sign_positive()
         )),
-        Ok(("", true))
+        Ok(("", true, true))
     );
 
-    let res = float_constant("-nan");
+    let result = float_constant("+nan");
     assert_eq!(
-        res.map(|(input, value)| (
+        result.map(|(input, value)| (
             input,
-            value.is_nan() && value.is_sign_negative()
+            value.is_nan(),
+            value.is_sign_positive()
         )),
-        Ok(("", true))
+        Ok(("", true, true))
+    );
+
+    let result = float_constant("-nan");
+    assert_eq!(
+        result.map(|(input, value)| (
+            input,
+            value.is_nan(),
+            value.is_sign_negative()
+        )),
+        Ok(("", true, true))
     );
 }
 
 #[test]
 fn test_float_constant_inf() {
-    let res = float_constant("inf");
-    assert_eq!(res, Ok(("", std::f64::INFINITY)));
+    let result = float_constant("inf");
+    assert_successful_parse!(result, std::f64::INFINITY);
 
-    let res = float_constant("-inf");
-    assert_eq!(res, Ok(("", std::f64::NEG_INFINITY)));
+    let result = float_constant("+inf");
+    assert_successful_parse!(result, std::f64::INFINITY);
+
+    let result = float_constant("-inf");
+    assert_successful_parse!(result, std::f64::NEG_INFINITY);
 }
 
 #[test]
 fn test_float_constant_infinity() {
-    let res = float_constant("infinity");
-    assert_eq!(res, Ok(("", std::f64::INFINITY)));
+    let result = float_constant("infinity");
+    assert_successful_parse!(result, std::f64::INFINITY);
 
-    let res = float_constant("-infinity");
-    assert_eq!(res, Ok(("", std::f64::NEG_INFINITY)));
+    let result = float_constant("+infinity");
+    assert_successful_parse!(result, std::f64::INFINITY);
+
+    let result = float_constant("-infinity");
+    assert_successful_parse!(result, std::f64::NEG_INFINITY);
 }
 
-/// FIXME: This recognizes hex integers as well
+// Adapted from Python's tokenize.Floatnumber
+fn hex_float_exponent(input: &str) -> IResult<&str, &str> {
+    recognize(terminated(
+        one_of("pP"),
+        terminated(opt(plus_or_minus), digit1),
+    ))(input)
+}
+
 fn hex_float_constant(input: &str) -> IResult<&str, FloatingConstant> {
-    map_res(
-        recognize(preceded(
-            opt(plus_or_minus),
-            preceded(
-                zero,
-                preceded(
-                    one_of("xX"),
-                    terminated(
-                        alt((
-                            recognize(preceded(period, hex_digit1)),
-                            recognize(delimited(
-                                hex_digit1, period, hex_digit0,
-                            )),
-                            hex_digit1,
-                        )),
-                        preceded(
-                            one_of("pP"),
-                            recognize(preceded(opt(plus_or_minus), digit1)),
-                        ),
-                    ),
+    let parser = tuple((
+        terminated(opt(plus_or_minus), terminated(zero, one_of("xX"))),
+        // parse the number without the sign to avoid having to spell out the
+        // return type of a closure to map_res
+        map_res(
+            recognize(alt((
+                terminated(
+                    alt((
+                        terminated(terminated(hex_digit1, period), hex_digit0),
+                        preceded(period, hex_digit1),
+                    )),
+                    opt(hex_float_exponent),
                 ),
-            ),
-        )),
-        |value| parse_hexf64(value, false),
+                terminated(hex_digit1, hex_float_exponent),
+            ))),
+            |value| parse_hexf64(value, false),
+        ),
+    ));
+    map(
+        parser,
+        |(sign, value)| {
+            if let Some('-') = sign {
+                -value
+            } else {
+                value
+            }
+        },
     )(input)
 }
 
@@ -846,17 +1091,41 @@ fn nan(input: &str) -> IResult<&str, FloatingConstant> {
 
 #[test]
 fn test_nan() {
-    let res = nan("nan");
+    let result = nan("nan");
     assert_eq!(
-        res.map(|(input, value)| (input, value.is_nan())),
-        Ok(("", true))
+        result.map(|(input, value)| (
+            input,
+            value.is_nan(),
+            value.is_sign_positive()
+        )),
+        Ok(("", true, true))
+    );
+
+    let result = nan("+nan");
+    assert_eq!(
+        result.map(|(input, value)| (
+            input,
+            value.is_nan(),
+            value.is_sign_positive()
+        )),
+        Ok(("", true, true))
+    );
+
+    let result = nan("-nan");
+    assert_eq!(
+        result.map(|(input, value)| (
+            input,
+            value.is_nan(),
+            value.is_sign_negative()
+        )),
+        Ok(("", true, true))
     );
 }
 
 #[test]
 fn test_invalid_nan() {
-    let res = nan("nanz");
-    assert!(res.is_err());
+    let result = nan("nanz");
+    assert_failed_parse!(result, "nanz", ErrorKind::RegexpMatch);
 }
 
 /// Parse `inf` or `infinity`
@@ -876,21 +1145,24 @@ fn inf_or_infinity(input: &str) -> IResult<&str, FloatingConstant> {
 }
 
 #[test]
-fn test_inf_or_infinity_inf() {
-    let res = inf_or_infinity("inf");
-    assert_eq!(res, Ok(("", std::f64::INFINITY)));
-
-    let res = inf_or_infinity("-inf");
-    assert_eq!(res, Ok(("", std::f64::NEG_INFINITY)));
-}
-
-#[test]
 fn test_inf_or_infinity_infinity() {
-    let res = inf_or_infinity("infinity");
-    assert_eq!(res, Ok(("", std::f64::INFINITY)));
+    let result = inf_or_infinity("inf");
+    assert_successful_parse!(result, std::f64::INFINITY);
 
-    let res = inf_or_infinity("-infinity");
-    assert_eq!(res, Ok(("", std::f64::NEG_INFINITY)));
+    let result = inf_or_infinity("+inf");
+    assert_successful_parse!(result, std::f64::INFINITY);
+
+    let result = inf_or_infinity("-inf");
+    assert_successful_parse!(result, std::f64::NEG_INFINITY);
+
+    let result = inf_or_infinity("infinity");
+    assert_successful_parse!(result, std::f64::INFINITY);
+
+    let result = inf_or_infinity("+infinity");
+    assert_successful_parse!(result, std::f64::INFINITY);
+
+    let result = inf_or_infinity("-infinity");
+    assert_successful_parse!(result, std::f64::NEG_INFINITY);
 }
 
 /// Parse `nan`, `inf`, or `infiniity`
@@ -900,9 +1172,9 @@ fn special_float_constant(input: &str) -> IResult<&str, FloatingConstant> {
 
 #[test]
 fn test_special_float_constant_nan() {
-    let res = special_float_constant("nan");
+    let result = special_float_constant("nan");
     assert_eq!(
-        res.map(|(input, value)| (
+        result.map(|(input, value)| (
             input,
             value.is_nan(),
             value.is_sign_positive()
@@ -910,9 +1182,19 @@ fn test_special_float_constant_nan() {
         Ok(("", true, true))
     );
 
-    let res = special_float_constant("-nan");
+    let result = special_float_constant("+nan");
     assert_eq!(
-        res.map(|(input, value)| (
+        result.map(|(input, value)| (
+            input,
+            value.is_nan(),
+            value.is_sign_positive()
+        )),
+        Ok(("", true, true))
+    );
+
+    let result = special_float_constant("-nan");
+    assert_eq!(
+        result.map(|(input, value)| (
             input,
             value.is_nan(),
             value.is_sign_negative()
@@ -923,20 +1205,20 @@ fn test_special_float_constant_nan() {
 
 #[test]
 fn test_special_float_constant_inf() {
-    let res = special_float_constant("inf");
-    assert_eq!(res, Ok(("", std::f64::INFINITY)));
+    let result = special_float_constant("inf");
+    assert_successful_parse!(result, std::f64::INFINITY);
 
-    let res = special_float_constant("-inf");
-    assert_eq!(res, Ok(("", std::f64::NEG_INFINITY)));
+    let result = special_float_constant("-inf");
+    assert_successful_parse!(result, std::f64::NEG_INFINITY);
 }
 
 #[test]
 fn test_special_float_constant_infinity() {
-    let res = special_float_constant("infinity");
-    assert_eq!(res, Ok(("", std::f64::INFINITY)));
+    let result = special_float_constant("infinity");
+    assert_successful_parse!(result, std::f64::INFINITY);
 
-    let res = special_float_constant("-infinity");
-    assert_eq!(res, Ok(("", std::f64::NEG_INFINITY)));
+    let result = special_float_constant("-infinity");
+    assert_successful_parse!(result, std::f64::NEG_INFINITY);
 }
 
 fn integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
@@ -945,17 +1227,17 @@ fn integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
 
 #[test]
 fn test_integer_constant() {
-    let res = integer_constant("1234");
-    assert_eq!(res, Ok(("", 1234)));
+    let result = integer_constant("1234");
+    assert_successful_parse!(result, 1234);
 
-    let res = integer_constant("-1234");
-    assert_eq!(res, Ok(("", -1234)));
+    let result = integer_constant("-1234");
+    assert_successful_parse!(result, -1234);
 
-    let res = integer_constant("0x1234");
-    assert_eq!(res, Ok(("", 0x1234)));
+    let result = integer_constant("0x1234");
+    assert_successful_parse!(result, 0x1234);
 
-    let res = integer_constant("-0x1234");
-    assert_eq!(res, Ok(("", -0x1234)));
+    let result = integer_constant("-0x1234");
+    assert_successful_parse!(result, -0x1234);
 }
 
 fn file_extension_decl(input: &str) -> IResult<&str, FileExtension> {
@@ -971,26 +1253,30 @@ fn file_extension_decl(input: &str) -> IResult<&str, FileExtension> {
 
 #[test]
 fn test_file_extension_decl() {
-    let res = file_extension_decl("file_extension \"foo\";");
-    assert_eq!(res, Ok(("", FileExtension("foo"))));
+    let result = file_extension_decl("file_extension \"foo\";");
+    let expected = FileExtension("foo");
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
 fn test_file_extension_decl_no_leading_space() {
-    let res = file_extension_decl("file_extension\"foo\";");
-    assert_eq!(res, Ok(("", FileExtension("foo"))));
+    let result = file_extension_decl("file_extension\"foo\";");
+    let expected = FileExtension("foo");
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
 fn test_file_extension_decl_trailing_space() {
-    let res = file_extension_decl("file_extension \"foo\"  ;");
-    assert_eq!(res, Ok(("", FileExtension("foo"))));
+    let result = file_extension_decl("file_extension \"foo\"  ;");
+    let expected = FileExtension("foo");
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
 fn test_file_extension_decl_surrounding_space() {
-    let res = file_extension_decl("file_extension   \"foo\"  ;");
-    assert_eq!(res, Ok(("", FileExtension("foo"))));
+    let result = file_extension_decl("file_extension   \"foo\"  ;");
+    let expected = FileExtension("foo");
+    assert_successful_parse!(result, expected);
 }
 
 fn file_identifier_decl(input: &str) -> IResult<&str, FileIdentifier> {
@@ -1006,24 +1292,28 @@ fn file_identifier_decl(input: &str) -> IResult<&str, FileIdentifier> {
 
 #[test]
 fn test_file_identifier_decl() {
-    let res = file_identifier_decl("file_identifier \"foo\";");
-    assert_eq!(res, Ok(("", FileIdentifier("foo"))));
+    let result = file_identifier_decl("file_identifier \"foo\";");
+    let expected = FileIdentifier("foo");
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
 fn test_file_identifier_decl_no_leading_space() {
-    let res = file_identifier_decl("file_identifier\"foo\";");
-    assert_eq!(res, Ok(("", FileIdentifier("foo"))));
+    let result = file_identifier_decl("file_identifier\"foo\";");
+    let expected = FileIdentifier("foo");
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
 fn test_file_identifier_decl_trailing_space() {
-    let res = file_identifier_decl("file_identifier \"foo\"  ;");
-    assert_eq!(res, Ok(("", FileIdentifier("foo"))));
+    let result = file_identifier_decl("file_identifier \"foo\"  ;");
+    let expected = FileIdentifier("foo");
+    assert_successful_parse!(result, expected);
 }
 
 #[test]
 fn test_file_identifier_decl_surrounding_space() {
-    let res = file_identifier_decl("file_identifier   \"foo\"  ;");
-    assert_eq!(res, Ok(("", FileIdentifier("foo"))));
+    let result = file_identifier_decl("file_identifier   \"foo\"  ;");
+    let expected = FileIdentifier("foo");
+    assert_successful_parse!(result, expected);
 }
