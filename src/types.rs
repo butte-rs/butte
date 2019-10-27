@@ -47,6 +47,38 @@ pub struct ProductType<'a> {
     pub(crate) metadata: Option<Metadata<'a>>,
 }
 
+impl<'a> ProductType<'a> {
+    pub fn new(
+        kind: ProductKind,
+        name: Ident<'a>,
+        fields: Vec<Field<'a>>,
+    ) -> Self {
+        Self {
+            kind,
+            name,
+            fields,
+            metadata: None,
+        }
+    }
+
+    pub fn with_metadata(self, metadata: Option<Metadata<'a>>) -> Self {
+        Self {
+            kind: self.kind,
+            name: self.name,
+            fields: self.fields,
+            metadata,
+        }
+    }
+}
+
+pub fn table<'a>(name: Ident<'a>, fields: Vec<Field<'a>>) -> ProductType<'a> {
+    ProductType::new(ProductKind::Table, name, fields)
+}
+
+pub fn struct_<'a>(name: Ident<'a>, fields: Vec<Field<'a>>) -> ProductType<'a> {
+    ProductType::new(ProductKind::Struct, name, fields)
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Hash)]
 pub enum ProductKind {
     Table,
@@ -106,8 +138,14 @@ impl<'a> Field<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Rpc<'a> {
-    pub(crate) name: Ident<'a>,
-    pub(crate) methods: Vec<RpcMethod<'a>>, // one or more
+    name: Ident<'a>,
+    methods: Vec<RpcMethod<'a>>, // one or more
+}
+
+impl<'a> Rpc<'a> {
+    pub fn new(name: Ident<'a>, methods: Vec<RpcMethod<'a>>) -> Self {
+        Self { name, methods }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -151,8 +189,14 @@ pub type FloatingConstant = f64;
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct EnumVal<'a> {
-    pub(crate) name: Ident<'a>,
-    pub(crate) value: Option<IntegerConstant>,
+    name: Ident<'a>,
+    value: Option<IntegerConstant>,
+}
+
+impl<'a> EnumVal<'a> {
+    pub fn new(name: Ident<'a>, value: Option<IntegerConstant>) -> Self {
+        Self { name, value }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -177,7 +221,7 @@ pub enum SingleValue<'a> {
 pub enum Value<'a> {
     SingleValue(SingleValue<'a>),
     Object(Object<'a>),
-    Values(Vec<Value<'a>>),
+    List(Vec<Value<'a>>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Hash, Eq)]
