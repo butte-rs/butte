@@ -226,15 +226,21 @@ rpc_service Greeter {
     assert_successful_parse!(result, expected);
 }
 
-/// Parse a flatbuffer schema.
+/// Parse a flatbuffer schema into a tree.
+///
+/// This is the only public API in `parser.rs`, as parsing specific elements shouldn't leak
+/// through to any other parts of the library.
 pub fn schema(input: &str) -> IResult<&str, Schema> {
     map(
         tuple((
             many0(delimited(multispace0, include, multispace0)),
             many0(delimited(multispace0, element, multispace0)),
         )),
-        |(includes, body)| {
-            Schema::builder().includes(includes).body(body).build()
+        |(includes, elements)| {
+            Schema::builder()
+                .includes(includes)
+                .elements(elements)
+                .build()
         },
     )(input)
 }
@@ -248,7 +254,7 @@ table MyMessage {
 }";
     let result = schema(input);
     let expected = Schema::builder()
-        .body(vec![Element::ProductType(table(
+        .elements(vec![Element::ProductType(table(
             Ident("MyMessage"),
             vec![
                 Field::builder()
@@ -306,7 +312,7 @@ rpc_service Greeter {
 ";
     let result = schema(input);
     let expected = Schema::builder()
-        .body(vec![
+        .elements(vec![
             Element::ProductType(table(
                 Ident("HelloReply"),
                 vec![Field::builder()

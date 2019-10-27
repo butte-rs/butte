@@ -8,7 +8,7 @@ pub struct Schema<'a> {
     #[builder(default)]
     includes: Vec<Include<'a>>,
     #[builder(default)]
-    body: Vec<Element<'a>>,
+    elements: Vec<Element<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
