@@ -194,16 +194,45 @@ fn element(input: &str) -> IResult<&str, Element> {
     ))(input)
 }
 
+#[test]
+fn test_element_schema() {
+    let input = "\
+rpc_service Greeter {
+  SayHello(HelloRequest):HelloReply;
+  SayManyHellos(ManyHellosRequest):HelloReply (streaming: \"server\");
+}";
+    let result = element(input);
+    let expected = Element::Rpc(
+        Rpc::builder()
+            .name(Ident("Greeter"))
+            .methods(vec![
+                RpcMethod::builder()
+                    .name(Ident("SayHello"))
+                    .request_type(Ident("HelloRequest"))
+                    .response_type(Ident("HelloReply"))
+                    .build(),
+                RpcMethod::builder()
+                    .name(Ident("SayManyHellos"))
+                    .request_type(Ident("ManyHellosRequest"))
+                    .response_type(Ident("HelloReply"))
+                    .metadata(Some(Metadata(HashMap::from_iter(vec![(
+                        Ident("streaming"),
+                        Some(SingleValue::StringConstant("server")),
+                    )]))))
+                    .build(),
+            ])
+            .build(),
+    );
+    assert_successful_parse!(result, expected);
+}
+
 /// Parse a flatbuffer schema.
 pub fn schema(input: &str) -> IResult<&str, Schema> {
     map(
-        terminated(
-            tuple((
-                many0(delimited(multispace0, include, multispace0)),
-                many0(delimited(multispace0, element, multispace0)),
-            )),
-            multispace0,
-        ),
+        tuple((
+            many0(delimited(multispace0, include, multispace0)),
+            many0(delimited(multispace0, element, multispace0)),
+        )),
         |(includes, body)| {
             Schema::builder().includes(includes).body(body).build()
         },
@@ -321,9 +350,7 @@ rpc_service Greeter {
                             .metadata(Some(Metadata(HashMap::from_iter(vec![
                                 (
                                     Ident("streaming"),
-                                    Some(SingleValue::StringConstant(
-                                        "streaming",
-                                    )),
+                                    Some(SingleValue::StringConstant("server")),
                                 ),
                             ]))))
                             .build(),
@@ -499,11 +526,13 @@ fn field_decl(input: &str) -> IResult<&str, Field> {
             )),
             tuple((space0, semicolon)),
         ),
-        |(name, ty, scalar, metadata)| Field {
-            name,
-            ty,
-            scalar,
-            metadata,
+        |(name, ty, scalar, metadata)| {
+            Field::builder()
+                .name(name)
+                .ty(ty)
+                .scalar(scalar)
+                .metadata(metadata)
+                .build()
         },
     )(input)
 }
@@ -547,8 +576,8 @@ fn rpc_decl(input: &str) -> IResult<&str, Rpc> {
     map(
         tuple((
             preceded(
-                tag("rpc_service"),
-                delimited(multispace1, ident, multispace0),
+                terminated(tag("rpc_service"), multispace1),
+                terminated(ident, multispace0),
             ),
             delimited(
                 left_brace,
@@ -569,12 +598,11 @@ rpc_service Greeter {
     let result = rpc_decl(input);
     let expected = Rpc::builder()
         .name(Ident("Greeter"))
-        .methods(vec![RpcMethod {
-            name: Ident("SayHello"),
-            request_type: Ident("HelloRequest"),
-            response_type: Ident("HelloReply"),
-            metadata: None,
-        }])
+        .methods(vec![RpcMethod::builder()
+            .name(Ident("SayHello"))
+            .request_type(Ident("HelloRequest"))
+            .response_type(Ident("HelloReply"))
+            .build()])
         .build();
     assert_successful_parse!(result, expected);
 }
@@ -583,28 +611,28 @@ rpc_service Greeter {
 fn test_rpc_decl_multiple_methods() {
     let input = "\
 rpc_service Greeter {
-  SayHello(HelloRequest):HelloReply;
-  SayManyHellos(ManyHellosRequest):HelloReply(streaming:\"server\");
+  SayHello   (HelloRequest ):HelloReply;
+  SayManyHellos(ManyHellosRequest):HelloReply  (streaming: \"server\"  ) ;
+
 }";
     let result = rpc_decl(input);
     let expected = Rpc::builder()
         .name(Ident("Greeter"))
         .methods(vec![
-            RpcMethod {
-                name: Ident("SayHello"),
-                request_type: Ident("HelloRequest"),
-                response_type: Ident("HelloReply"),
-                metadata: None,
-            },
-            RpcMethod {
-                name: Ident("SayManyHellos"),
-                request_type: Ident("ManyHellosRequest"),
-                response_type: Ident("HelloReply"),
-                metadata: Some(Metadata(HashMap::from_iter(vec![(
+            RpcMethod::builder()
+                .name(Ident("SayHello"))
+                .request_type(Ident("HelloRequest"))
+                .response_type(Ident("HelloReply"))
+                .build(),
+            RpcMethod::builder()
+                .name(Ident("SayManyHellos"))
+                .request_type(Ident("ManyHellosRequest"))
+                .response_type(Ident("HelloReply"))
+                .metadata(Some(Metadata(HashMap::from_iter(vec![(
                     Ident("streaming"),
                     Some(SingleValue::StringConstant("server")),
-                )]))),
-            },
+                )]))))
+                .build(),
         ])
         .build();
     assert_successful_parse!(result, expected);
@@ -612,26 +640,28 @@ rpc_service Greeter {
 
 fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
     map(
-        terminated(
-            tuple((
-                terminated(ident, space0),
-                delimited(
-                    left_paren,
-                    delimited(space0, ident, space0),
-                    right_paren,
+        tuple((
+            terminated(ident, space0),
+            delimited(
+                left_paren,
+                delimited(space0, ident, space0),
+                right_paren,
+            ),
+            preceded(
+                delimited(space0, colon, space0),
+                terminated(
+                    tuple((ident, preceded(space0, metadata))),
+                    terminated(space0, semicolon),
                 ),
-                preceded(
-                    delimited(space0, colon, space0),
-                    tuple((ident, metadata)),
-                ),
-            )),
-            terminated(space0, semicolon),
-        ),
-        |(name, request_type, (response_type, metadata))| RpcMethod {
-            name,
-            request_type,
-            response_type,
-            metadata,
+            ),
+        )),
+        |(name, request_type, (response_type, metadata))| {
+            RpcMethod::builder()
+                .name(name)
+                .request_type(request_type)
+                .response_type(response_type)
+                .metadata(metadata)
+                .build()
         },
     )(input)
 }
@@ -640,12 +670,11 @@ fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
 fn test_rpc_method() {
     let input = "SayHello(HelloRequest):HelloReply;";
     let result = rpc_method(input);
-    let expected = RpcMethod {
-        name: Ident("SayHello"),
-        request_type: Ident("HelloRequest"),
-        response_type: Ident("HelloReply"),
-        metadata: None,
-    };
+    let expected = RpcMethod::builder()
+        .name(Ident("SayHello"))
+        .request_type(Ident("HelloRequest"))
+        .response_type(Ident("HelloReply"))
+        .build();
     assert_successful_parse!(result, expected);
 }
 
@@ -902,11 +931,13 @@ fn type_decl(input: &str) -> IResult<&str, ProductType> {
                 right_brace,
             ),
         )),
-        |(kind, name, metadata, fields)| ProductType {
-            kind,
-            name,
-            fields,
-            metadata,
+        |(kind, name, metadata, fields)| {
+            ProductType::builder()
+                .kind(kind)
+                .name(name)
+                .metadata(metadata)
+                .fields(fields)
+                .build()
         },
     )(input)
 }
