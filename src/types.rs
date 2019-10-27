@@ -44,12 +44,12 @@ pub struct Attribute<'a>(pub(crate) Ident<'a>);
 
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct ProductType<'a> {
-    pub(crate) kind: ProductKind,
-    pub(crate) name: Ident<'a>,
-    pub(crate) fields: Vec<Field<'a>>, // one or more
+    kind: ProductKind,
+    name: Ident<'a>,
+    fields: Vec<Field<'a>>, // one or more
 
     #[builder(default)]
-    pub(crate) metadata: Option<Metadata<'a>>,
+    metadata: Option<Metadata<'a>>,
 }
 
 pub fn table<'a>(name: Ident<'a>, fields: Vec<Field<'a>>) -> ProductType<'a> {
@@ -90,14 +90,14 @@ pub enum EnumKind<'a> {
 
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Field<'a> {
-    pub(crate) name: Ident<'a>,
-    pub(crate) ty: Type<'a>,
+    name: Ident<'a>,
+    ty: Type<'a>,
 
     #[builder(default)]
-    pub(crate) scalar: Option<Scalar>,
+    scalar: Option<Scalar>,
 
     #[builder(default)]
-    pub(crate) metadata: Option<Metadata<'a>>,
+    metadata: Option<Metadata<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
@@ -108,12 +108,12 @@ pub struct Rpc<'a> {
 
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct RpcMethod<'a> {
-    pub(crate) name: Ident<'a>,
-    pub(crate) request_type: Ident<'a>,
-    pub(crate) response_type: Ident<'a>,
+    name: Ident<'a>,
+    request_type: Ident<'a>,
+    response_type: Ident<'a>,
 
     #[builder(default)]
-    pub(crate) metadata: Option<Metadata<'a>>,
+    metadata: Option<Metadata<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
