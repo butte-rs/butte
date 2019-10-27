@@ -17,4 +17,4 @@ hexf-parse = "0.1.0"
 
 [dependencies.nom]
 version = "5.0.1"
-features = ["regexp", "lexical"]
+features = ["regexp"]
