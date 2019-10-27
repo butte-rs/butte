@@ -8,7 +8,7 @@ use nom::{
         char, digit0, digit1, hex_digit0, hex_digit1, multispace0, multispace1,
         none_of, one_of, space0, space1,
     },
-    combinator::{map, map_res, opt, recognize, value as value_if_succeeds},
+    combinator::{map, map_res, opt, recognize, value},
     multi::{many0, many1, separated_list, separated_nonempty_list},
     sequence::{delimited, preceded, separated_pair, terminated, tuple},
     IResult,
@@ -474,29 +474,29 @@ fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
 fn ty(input: &str) -> IResult<&str, Type> {
     alt((
         alt((
-            value_if_succeeds(Type::Bool, tag("bool")),
-            value_if_succeeds(Type::Byte, tag("byte")),
-            value_if_succeeds(Type::UByte, tag("ubyte")),
-            value_if_succeeds(Type::Short, tag("short")),
-            value_if_succeeds(Type::UShort, tag("ushort")),
-            value_if_succeeds(Type::Long, tag("long")),
-            value_if_succeeds(Type::ULong, tag("ulong")),
-            value_if_succeeds(Type::Double, tag("double")),
-            value_if_succeeds(Type::Int8, tag("int8")),
-            value_if_succeeds(Type::UInt8, tag("uint8")),
-            value_if_succeeds(Type::Int16, tag("int16")),
-            value_if_succeeds(Type::UInt16, tag("uint16")),
-            value_if_succeeds(Type::Int32, tag("int32")),
-            value_if_succeeds(Type::UInt32, tag("uint32")),
-            value_if_succeeds(Type::Int64, tag("int64")),
-            value_if_succeeds(Type::UInt64, tag("uint64")),
-            value_if_succeeds(Type::Float32, tag("float32")),
-            value_if_succeeds(Type::Float64, tag("float64")),
-            value_if_succeeds(Type::Int, tag("int")),
-            value_if_succeeds(Type::UInt, tag("uint")),
-            value_if_succeeds(Type::Float, tag("float")),
+            value(Type::Bool, tag("bool")),
+            value(Type::Byte, tag("byte")),
+            value(Type::UByte, tag("ubyte")),
+            value(Type::Short, tag("short")),
+            value(Type::UShort, tag("ushort")),
+            value(Type::Long, tag("long")),
+            value(Type::ULong, tag("ulong")),
+            value(Type::Double, tag("double")),
+            value(Type::Int8, tag("int8")),
+            value(Type::UInt8, tag("uint8")),
+            value(Type::Int16, tag("int16")),
+            value(Type::UInt16, tag("uint16")),
+            value(Type::Int32, tag("int32")),
+            value(Type::UInt32, tag("uint32")),
+            value(Type::Int64, tag("int64")),
+            value(Type::UInt64, tag("uint64")),
+            value(Type::Float32, tag("float32")),
+            value(Type::Float64, tag("float64")),
+            value(Type::Int, tag("int")),
+            value(Type::UInt, tag("uint")),
+            value(Type::Float, tag("float")),
         )),
-        value_if_succeeds(Type::String, tag("string")),
+        value(Type::String, tag("string")),
         map(delimited(tag("["), ty, tag("]")), |t| {
             Type::Array(Box::new(t))
         }),
@@ -535,7 +535,10 @@ fn object(input: &str) -> IResult<&str, Object> {
     map(
         delimited(
             left_brace,
-            separated_nonempty_list(comma, separated_pair(ident, colon, value)),
+            separated_nonempty_list(
+                comma,
+                separated_pair(ident, colon, value_),
+            ),
             right_brace,
         ),
         |values| Object(HashMap::from_iter(values)),
@@ -549,7 +552,7 @@ fn single_value(input: &str) -> IResult<&str, SingleValue> {
     ))(input)
 }
 
-fn value(input: &str) -> IResult<&str, Value> {
+fn value_(input: &str) -> IResult<&str, Value> {
     alt((
         map(single_value, Value::SingleValue),
         map(object, Value::Object),
@@ -560,14 +563,14 @@ fn type_decl(input: &str) -> IResult<&str, ProductType> {
     map(
         tuple((
             alt((
-                value_if_succeeds(ProductKind::Table, tag("table")),
-                value_if_succeeds(ProductKind::Struct, tag("struct")),
+                value(ProductKind::Table, tag("table")),
+                value(ProductKind::Struct, tag("struct")),
             )),
             delimited(multispace1, ident, multispace0),
             terminated(metadata, multispace0),
             delimited(
                 left_brace,
-                delimited(multispace0, many1(field_decl), multispace0),
+                many1(delimited(multispace0, field_decl, multispace0)),
                 right_brace,
             ),
         )),
@@ -693,9 +696,7 @@ fn test_hex_integer_constant() {
 }
 
 fn true_(input: &str) -> IResult<&str, bool> {
-    value_if_succeeds(true, |input: &str| nom::re_match!(input, r"\btrue\b"))(
-        input,
-    )
+    value(true, |input: &str| nom::re_match!(input, r"\btrue\b"))(input)
 }
 
 #[test]
@@ -711,9 +712,7 @@ fn test_invalid_true() {
 }
 
 fn false_(input: &str) -> IResult<&str, bool> {
-    value_if_succeeds(false, |input: &str| nom::re_match!(input, r"\bfalse\b"))(
-        input,
-    )
+    value(false, |input: &str| nom::re_match!(input, r"\bfalse\b"))(input)
 }
 
 #[test]
