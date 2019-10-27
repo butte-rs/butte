@@ -186,6 +186,7 @@ pub enum Type<'a> {
 
 pub type IntegerConstant = i64;
 pub type FloatingConstant = f64;
+pub type BooleanConstant = bool;
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct EnumVal<'a> {
@@ -206,6 +207,7 @@ pub struct Metadata<'a>(pub(crate) HashMap<Ident<'a>, Option<SingleValue<'a>>>);
 pub enum Scalar {
     Integer(IntegerConstant),
     Float(FloatingConstant),
+    Boolean(BooleanConstant),
 }
 
 #[derive(Debug, Clone, PartialEq)]

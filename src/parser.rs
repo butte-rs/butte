@@ -29,6 +29,8 @@ macro_rules! assert_failed_parse {
 #[cfg(test)]
 macro_rules! assert_successful_parse {
     ($left:expr, $right:expr) => {
+        // The first element of the tuple in the Result is the remaining input, which should be
+        // empty when parsing is successful
         assert_eq!($left, Ok(("", $right)))
     };
 }
@@ -643,6 +645,7 @@ fn scalar(input: &str) -> IResult<&str, Scalar> {
     alt((
         map(float_constant, Scalar::Float),
         map(integer_constant, Scalar::Integer),
+        map(boolean_constant, Scalar::Boolean),
     ))(input)
 }
 
@@ -704,6 +707,18 @@ fn test_value_single_value() {
     assert_successful_parse!(
         result,
         Value::SingleValue(SingleValue::StringConstant("abc d"))
+    );
+
+    let result = value_("true");
+    assert_successful_parse!(
+        result,
+        Value::SingleValue(SingleValue::Scalar(Scalar::Boolean(true)))
+    );
+
+    let result = value_("false");
+    assert_successful_parse!(
+        result,
+        Value::SingleValue(SingleValue::Scalar(Scalar::Boolean(false)))
     );
 }
 
@@ -922,7 +937,8 @@ fn test_invalid_false() {
     assert_failed_parse!(result, "falsez", ErrorKind::RegexpMatch);
 }
 
-/// TODO: Where can this be used in a schema?
+/// TODO: This is unused by any other rule in the flatbuffers grammar. I've assumed it's a `Scalar`
+/// here
 fn boolean_constant(input: &str) -> IResult<&str, bool> {
     alt((true_, false_))(input)
 }
