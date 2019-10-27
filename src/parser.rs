@@ -1,68 +1,84 @@
 use crate::types::*;
 use hexf_parse::parse_hexf64;
 use nom::{
+    self,
     branch::alt,
     bytes::complete::{escaped, tag, take_while, take_while_m_n},
     character::complete::{
         char, digit0, digit1, hex_digit0, hex_digit1, multispace0, multispace1,
         none_of, one_of, space0, space1,
     },
-    combinator::{all_consuming, map, map_res, opt, recognize},
+    combinator::{map, map_res, opt, recognize, value as value_if_succeeds},
     multi::{many0, many1, separated_list, separated_nonempty_list},
     sequence::{delimited, preceded, separated_pair, terminated, tuple},
     IResult,
 };
 use std::collections::HashMap;
 use std::iter::FromIterator;
+use std::str::FromStr;
 
-fn plus_or_minus(input: &str) -> IResult<&str, &str> {
-    alt((tag("-"), tag("+")))(input)
-}
-
-fn double_quote(input: &str) -> IResult<&str, &str> {
-    tag("\"")(input)
-}
-
-fn backslash(input: &str) -> IResult<&str, &str> {
-    tag("\\")(input)
-}
-
-fn left_paren(input: &str) -> IResult<&str, &str> {
-    tag("(")(input)
-}
-
-fn right_paren(input: &str) -> IResult<&str, &str> {
-    tag(")")(input)
-}
-
-fn left_brace(input: &str) -> IResult<&str, &str> {
-    tag("{")(input)
-}
-
-fn right_brace(input: &str) -> IResult<&str, &str> {
-    tag("}")(input)
-}
-
-fn colon(input: &str) -> IResult<&str, &str> {
-    tag(":")(input)
-}
-
-fn comma(input: &str) -> IResult<&str, &str> {
-    tag(",")(input)
-}
-
-fn semicolon(input: &str) -> IResult<&str, &str> {
-    tag(";")(input)
+fn plus_or_minus(input: &str) -> IResult<&str, char> {
+    one_of("-+")(input)
 }
 
 #[test]
 fn test_plus_or_minus() {
     let res = plus_or_minus("+");
-    assert_eq!(res, Ok(("", "+")));
+    assert_eq!(res, Ok(("", '+')));
+
     let res = plus_or_minus("-");
-    assert_eq!(res, Ok(("", "-")));
+    assert_eq!(res, Ok(("", '-')));
+
     let res = plus_or_minus("/");
     assert!(res.is_err());
+}
+
+fn double_quote(input: &str) -> IResult<&str, char> {
+    char('\"')(input)
+}
+
+fn backslash(input: &str) -> IResult<&str, char> {
+    char('\\')(input)
+}
+
+fn left_paren(input: &str) -> IResult<&str, char> {
+    char('(')(input)
+}
+
+fn right_paren(input: &str) -> IResult<&str, char> {
+    char(')')(input)
+}
+
+fn left_brace(input: &str) -> IResult<&str, char> {
+    char('{')(input)
+}
+
+fn right_brace(input: &str) -> IResult<&str, char> {
+    char('}')(input)
+}
+
+fn colon(input: &str) -> IResult<&str, char> {
+    char(':')(input)
+}
+
+fn comma(input: &str) -> IResult<&str, char> {
+    char(',')(input)
+}
+
+fn semicolon(input: &str) -> IResult<&str, char> {
+    char(';')(input)
+}
+
+fn equals(input: &str) -> IResult<&str, char> {
+    char('=')(input)
+}
+
+fn period(input: &str) -> IResult<&str, char> {
+    char('.')(input)
+}
+
+fn zero(input: &str) -> IResult<&str, char> {
+    char('0')(input)
 }
 
 fn ident(input: &str) -> IResult<&str, Ident> {
@@ -106,13 +122,13 @@ fn test_invalid_ident_contains_valid() {
 }
 
 #[test]
-fn test_just_number_is_invalid() {
+fn test_number_is_invalid() {
     let result = ident("1");
     assert!(result.is_err());
 }
 
 #[test]
-fn test_empty_ident() {
+fn test_empty_ident_is_invalid() {
     let result = ident("");
     assert!(result.is_err());
 }
@@ -138,6 +154,12 @@ fn test_string_constant() {
     assert_eq!(res, Ok(("", "a b c D \\\"z1")));
 }
 
+#[test]
+fn test_empty_string_constant() {
+    let res = string_constant("\"\"");
+    assert_eq!(res, Ok(("", "")));
+}
+
 fn element(input: &str) -> IResult<&str, Element> {
     alt((
         map(namespace_decl, Element::Namespace),
@@ -154,15 +176,39 @@ fn element(input: &str) -> IResult<&str, Element> {
 
 pub fn schema(input: &str) -> IResult<&str, Schema> {
     map(
-        all_consuming(terminated(
+        terminated(
             tuple((
                 many0(delimited(multispace0, include, multispace0)),
                 many0(delimited(multispace0, element, multispace0)),
             )),
             multispace0,
-        )),
+        ),
         |(includes, body)| Schema { includes, body },
     )(input)
+}
+
+#[test]
+fn test_elements_only_schema() {
+    let input = "\
+table MyMessage {
+  message: string;
+  foo: float64 = 2;
+}";
+    let res = schema(input);
+    let expected = Schema {
+        includes: vec![],
+        body: vec![Element::ProductType(ProductType {
+            kind: ProductKind::Table,
+            name: Ident("MyMessage"),
+            metadata: None,
+            fields: vec![
+                Field::new(Ident("message"), Type::String),
+                Field::new(Ident("foo"), Type::Float64)
+                    .with_scalar(Scalar::Integer(2)),
+            ],
+        })],
+    };
+    assert_eq!(res, Ok(("", expected)));
 }
 
 #[test]
@@ -175,58 +221,11 @@ include "foo/bar/baz.fbs";
 
     "#;
     let res = schema(input);
-    assert_eq!(
-        res,
-        Ok((
-            "",
-            Schema {
-                includes: vec![
-                    Include("a"),
-                    Include("b"),
-                    Include("foo/bar/baz.fbs")
-                ],
-                body: vec![]
-            }
-        ))
-    );
-}
-
-#[test]
-fn test_elements_only_schema() {
-    let input = "\
-table MyMessage {
-  message: string;
-  foo: float64 = 2;
-}";
-    let res = schema(input);
-    assert_eq!(
-        res,
-        Ok((
-            "",
-            Schema {
-                includes: vec![],
-                body: vec![Element::ProductType(ProductType {
-                    kind: ProductKind::Table,
-                    name: Ident("MyMessage"),
-                    metadata: None,
-                    fields: vec![
-                        Field {
-                            name: Ident("message"),
-                            ty: Type::String,
-                            scalar: None,
-                            metadata: None,
-                        },
-                        Field {
-                            name: Ident("foo"),
-                            ty: Type::Float64,
-                            scalar: Some(Scalar::Integer(2)),
-                            metadata: None
-                        }
-                    ]
-                })]
-            }
-        ))
-    );
+    let expected = Schema {
+        includes: vec![Include("a"), Include("b"), Include("foo/bar/baz.fbs")],
+        body: vec![],
+    };
+    assert_eq!(res, Ok(("", expected)));
 }
 
 fn include(input: &str) -> IResult<&str, Include> {
@@ -268,11 +267,7 @@ fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
     map(
         delimited(
             tag("namespace"),
-            delimited(
-                multispace1,
-                separated_nonempty_list(tag("."), ident),
-                multispace0,
-            ),
+            delimited(space1, separated_nonempty_list(tag("."), ident), space0),
             semicolon,
         ),
         Namespace,
@@ -280,18 +275,24 @@ fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
 }
 
 #[test]
-fn test_simple_namespace_decl() {
-    let result = namespace_decl("namespace a.b;");
-    assert_eq!(result, Ok(("", Namespace(vec![Ident("a"), Ident("b")]))));
+fn test_one_level_namespace_decl() {
+    let result = namespace_decl("namespace a;");
+    let expected = Namespace(vec![Ident("a")]);
+    assert_eq!(result, Ok(("", expected)));
 }
 
 #[test]
-fn test_nested_namespace_decl() {
+fn test_two_level_namespace_decl() {
+    let result = namespace_decl("namespace a.b;");
+    let expected = Namespace(vec![Ident("a"), Ident("b")]);
+    assert_eq!(result, Ok(("", expected)));
+}
+
+#[test]
+fn test_three_level_namespace_decl() {
     let result = namespace_decl("namespace a.b.c;");
-    assert_eq!(
-        result,
-        Ok(("", Namespace(vec![Ident("a"), Ident("b"), Ident("c")])))
-    );
+    let expected = Namespace(vec![Ident("a"), Ident("b"), Ident("c")]);
+    assert_eq!(result, Ok(("", expected)));
 }
 
 fn attribute_decl(input: &str) -> IResult<&str, Attribute> {
@@ -326,16 +327,22 @@ fn enum_decl(input: &str) -> IResult<&str, Enum> {
         tuple((
             alt((
                 map(
-                    tuple((preceded(tag("enum"), ident), preceded(colon, ty))),
+                    tuple((
+                        preceded(tag("enum"), delimited(space1, ident, space0)),
+                        preceded(colon, ty),
+                    )),
                     |(id, t)| (id, EnumKind::Enum(t)),
                 ),
-                map(preceded(tag("union"), ident), |id| (id, EnumKind::Union)),
+                map(
+                    preceded(tag("union"), delimited(space1, ident, space0)),
+                    |id| (id, EnumKind::Union),
+                ),
             )),
             metadata,
             delimited(
-                left_brace,
+                delimited(space0, left_brace, multispace0),
                 separated_nonempty_list(comma, enumval_decl),
-                right_brace,
+                preceded(multispace0, right_brace),
             ),
         )),
         |((ident, kind), metadata, values)| Enum {
@@ -367,15 +374,18 @@ fn test_root_decl() {
 
 fn field_decl(input: &str) -> IResult<&str, Field> {
     map(
-        all_consuming(terminated(
+        terminated(
             tuple((
                 terminated(ident, tuple((space0, colon, space0))),
                 ty,
-                opt(preceded(tuple((space0, tag("//"), space0)), scalar)),
+                opt(preceded(
+                    tuple((space0, equals, space0)),
+                    terminated(scalar, space0),
+                )),
                 metadata,
             )),
             tuple((space0, semicolon)),
-        )),
+        ),
         |(name, ty, scalar, metadata)| Field {
             name,
             ty,
@@ -393,20 +403,38 @@ fn test_field_decl() {
         res,
         Ok((
             "",
-            Field {
-                name: Ident("foo"),
-                ty: Type::Float64,
-                scalar: Some(Scalar::Integer(2)),
-                metadata: None,
-            }
+            Field::new(Ident("foo"), Type::Float64)
+                .with_scalar(Scalar::Integer(2))
         ))
     );
+}
+
+#[test]
+fn test_field_decl_uint() {
+    let input = "foo :uint=3.0;";
+    let res = field_decl(input);
+    assert_eq!(
+        res,
+        Ok((
+            "",
+            Field::new(Ident("foo"), Type::UInt)
+                .with_scalar(Scalar::Float(3.0))
+        ))
+    );
+}
+
+#[test]
+fn test_field_decl_no_scalar() {
+    let input = "foo:float64    ;";
+    let res = field_decl(input);
+    let expected = Field::new(Ident("foo"), Type::Float64);
+    assert_eq!(res, Ok(("", expected)));
 }
 
 fn rpc_decl(input: &str) -> IResult<&str, Rpc> {
     map(
         tuple((
-            preceded(tag("rpc_service"), ident),
+            preceded(tag("rpc_service"), preceded(space1, ident)),
             delimited(
                 delimited(multispace1, left_brace, multispace0),
                 many1(rpc_method),
@@ -446,29 +474,29 @@ fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
 fn ty(input: &str) -> IResult<&str, Type> {
     alt((
         alt((
-            map(tag("bool"), |_| Type::Bool),
-            map(tag("byte"), |_| Type::Byte),
-            map(tag("ubyte"), |_| Type::UByte),
-            map(tag("short"), |_| Type::Short),
-            map(tag("ushort"), |_| Type::UShort),
-            map(tag("long"), |_| Type::Long),
-            map(tag("ulong"), |_| Type::ULong),
-            map(tag("double"), |_| Type::Double),
-            map(tag("int8"), |_| Type::Int8),
-            map(tag("uint8"), |_| Type::UInt8),
-            map(tag("int16"), |_| Type::Int16),
-            map(tag("uint16"), |_| Type::UInt16),
-            map(tag("int32"), |_| Type::Int32),
-            map(tag("uint32"), |_| Type::UInt32),
-            map(tag("int64"), |_| Type::Int64),
-            map(tag("uint64"), |_| Type::UInt64),
-            map(tag("float32"), |_| Type::Float32),
-            map(tag("float64"), |_| Type::Float64),
-            map(tag("int"), |_| Type::Int),
-            map(tag("uint"), |_| Type::UInt),
-            map(tag("float"), |_| Type::Float),
+            value_if_succeeds(Type::Bool, tag("bool")),
+            value_if_succeeds(Type::Byte, tag("byte")),
+            value_if_succeeds(Type::UByte, tag("ubyte")),
+            value_if_succeeds(Type::Short, tag("short")),
+            value_if_succeeds(Type::UShort, tag("ushort")),
+            value_if_succeeds(Type::Long, tag("long")),
+            value_if_succeeds(Type::ULong, tag("ulong")),
+            value_if_succeeds(Type::Double, tag("double")),
+            value_if_succeeds(Type::Int8, tag("int8")),
+            value_if_succeeds(Type::UInt8, tag("uint8")),
+            value_if_succeeds(Type::Int16, tag("int16")),
+            value_if_succeeds(Type::UInt16, tag("uint16")),
+            value_if_succeeds(Type::Int32, tag("int32")),
+            value_if_succeeds(Type::UInt32, tag("uint32")),
+            value_if_succeeds(Type::Int64, tag("int64")),
+            value_if_succeeds(Type::UInt64, tag("uint64")),
+            value_if_succeeds(Type::Float32, tag("float32")),
+            value_if_succeeds(Type::Float64, tag("float64")),
+            value_if_succeeds(Type::Int, tag("int")),
+            value_if_succeeds(Type::UInt, tag("uint")),
+            value_if_succeeds(Type::Float, tag("float")),
         )),
-        map(tag("string"), |_| Type::String),
+        value_if_succeeds(Type::String, tag("string")),
         map(delimited(tag("["), ty, tag("]")), |t| {
             Type::Array(Box::new(t))
         }),
@@ -498,8 +526,8 @@ fn metadata(input: &str) -> IResult<&str, Option<Metadata>> {
 
 fn scalar(input: &str) -> IResult<&str, Scalar> {
     alt((
-        map(integer_constant, Scalar::Integer),
         map(float_constant, Scalar::Float),
+        map(integer_constant, Scalar::Integer),
     ))(input)
 }
 
@@ -530,10 +558,10 @@ fn value(input: &str) -> IResult<&str, Value> {
 
 fn type_decl(input: &str) -> IResult<&str, ProductType> {
     map(
-        all_consuming(tuple((
+        tuple((
             alt((
-                map(tag("table"), |_| ProductKind::Table),
-                map(tag("struct"), |_| ProductKind::Struct),
+                value_if_succeeds(ProductKind::Table, tag("table")),
+                value_if_succeeds(ProductKind::Struct, tag("struct")),
             )),
             delimited(multispace1, ident, multispace0),
             terminated(metadata, multispace0),
@@ -542,7 +570,7 @@ fn type_decl(input: &str) -> IResult<&str, ProductType> {
                 delimited(multispace0, many1(field_decl), multispace0),
                 right_brace,
             ),
-        ))),
+        )),
         |(kind, name, metadata, fields)| ProductType {
             kind,
             name,
@@ -550,6 +578,41 @@ fn type_decl(input: &str) -> IResult<&str, ProductType> {
             metadata,
         },
     )(input)
+}
+
+#[test]
+fn test_product_type_multiple_fields() {
+    let table = "\
+table HelloReply {
+  message: string;
+  foo :uint=3.0;
+}";
+    let res = type_decl(table);
+    assert_eq!(
+        res,
+        Ok((
+            "",
+            ProductType {
+                kind: ProductKind::Table,
+                name: Ident("HelloReply"),
+                fields: vec![
+                    Field {
+                        name: Ident("message"),
+                        ty: Type::String,
+                        scalar: None,
+                        metadata: None
+                    },
+                    Field {
+                        name: Ident("foo"),
+                        ty: Type::UInt,
+                        scalar: Some(Scalar::Float(3.0)),
+                        metadata: None,
+                    }
+                ],
+                metadata: None
+            }
+        ))
+    );
 }
 
 #[test]
@@ -579,10 +642,9 @@ table HelloReply {
 }
 
 fn dec_integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
-    map_res(
-        all_consuming(recognize(preceded(opt(plus_or_minus), digit1))),
-        |value| IntegerConstant::from_str_radix(value, 10),
-    )(input)
+    map_res(recognize(preceded(opt(plus_or_minus), digit1)), |value| {
+        IntegerConstant::from_str_radix(value, 10)
+    })(input)
 }
 
 #[test]
@@ -592,20 +654,14 @@ fn test_dec_integer_constant() {
 
     let res = dec_integer_constant("-1234");
     assert_eq!(res, Ok(("", -1234)));
-
-    let res = dec_integer_constant("-0x1234");
-    assert!(res.is_err());
-
-    let res = dec_integer_constant("0x1234");
-    assert!(res.is_err());
 }
 
 fn hex_integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
     map(
-        all_consuming(tuple((
+        tuple((
             opt(plus_or_minus),
             preceded(
-                char('0'),
+                zero,
                 preceded(
                     one_of("xX"),
                     map_res(hex_digit1, |value| {
@@ -613,9 +669,9 @@ fn hex_integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
                     }),
                 ),
             ),
-        ))),
+        )),
         |(sign, value)| {
-            if let Some("-") = sign {
+            if let Some('-') = sign {
                 -value
             } else {
                 value
@@ -637,26 +693,37 @@ fn test_hex_integer_constant() {
 }
 
 fn true_(input: &str) -> IResult<&str, bool> {
-    map(all_consuming(tag("true")), |_| true)(input)
+    value_if_succeeds(true, |input: &str| nom::re_match!(input, r"\btrue\b"))(
+        input,
+    )
 }
 
 #[test]
 fn test_true() {
     let res = true_("true");
     assert_eq!(res, Ok(("", true)));
+}
 
+#[test]
+fn test_invalid_true() {
     let res = true_("truez");
     assert!(res.is_err());
 }
 
 fn false_(input: &str) -> IResult<&str, bool> {
-    map(all_consuming(tag("false")), |_| false)(input)
+    value_if_succeeds(false, |input: &str| nom::re_match!(input, r"\bfalse\b"))(
+        input,
+    )
 }
 
 #[test]
 fn test_false() {
     let res = false_("false");
     assert_eq!(res, Ok(("", false)));
+}
+
+#[test]
+fn test_invalid_false() {
     let res = false_("falsez");
     assert!(res.is_err());
 }
@@ -669,97 +736,98 @@ fn boolean_constant(input: &str) -> IResult<&str, bool> {
 fn test_boolean_constant() {
     let res = boolean_constant("true");
     assert_eq!(res, Ok(("", true)));
+
     let res = boolean_constant("false");
     assert_eq!(res, Ok(("", false)));
+
     let res = boolean_constant("waltz");
     assert!(res.is_err());
 }
 
+fn floating_exponent(input: &str) -> IResult<&str, &str> {
+    recognize(tuple((one_of("eE"), opt(plus_or_minus), digit1)))(input)
+}
+
+// ([0-9](?:[0-9])*\.(?:[0-9](?:[0-9])*)?|\.[0-9](?:[0-9])*)
+// ([eE][-+]?[0-9](?:[0-9])*)?
+// |
+// [0-9](?:[0-9])*[eE][-+]?[0-9](?:[0-9])*
+fn floating_constant(input: &str) -> IResult<&str, FloatingConstant> {
+    let parser = alt((
+        recognize(terminated(
+            alt((
+                recognize(tuple((digit1, period, digit0))),
+                recognize(preceded(period, digit1)),
+            )),
+            opt(floating_exponent),
+        )),
+        recognize(terminated(digit1, floating_exponent)),
+    ));
+    map_res(recognize(parser), FloatingConstant::from_str)(input)
+}
+
+/// A float constant is either a special float constant, a hex float constant or a double
 fn float_constant(input: &str) -> IResult<&str, FloatingConstant> {
     alt((
         special_float_constant,
         hex_float_constant,
-        dec_float_constant,
+        floating_constant,
     ))(input)
 }
 
-fn dec_float_constant(input: &str) -> IResult<&str, FloatingConstant> {
-    map_res(
-        all_consuming(recognize(terminated(
-            preceded(
-                opt(plus_or_minus),
-                alt((
-                    recognize(preceded(char('.'), digit1)),
-                    recognize(delimited(digit1, char('.'), digit0)),
-                    digit1,
-                )),
-            ),
-            opt(preceded(
-                one_of("eE"),
-                recognize(preceded(opt(plus_or_minus), digit1)),
-            )),
-        ))),
-        |number| number.parse::<FloatingConstant>(),
-    )(input)
+#[test]
+fn test_float_constant_nan() {
+    let res = float_constant("nan");
+    assert_eq!(
+        res.map(|(input, value)| (
+            input,
+            value.is_nan() && value.is_sign_positive()
+        )),
+        Ok(("", true))
+    );
+
+    let res = float_constant("-nan");
+    assert_eq!(
+        res.map(|(input, value)| (
+            input,
+            value.is_nan() && value.is_sign_negative()
+        )),
+        Ok(("", true))
+    );
 }
 
 #[test]
-fn test_dec_float_constant() {
-    let res = dec_float_constant("2.0");
-    assert_eq!(res, Ok(("", 2.0)));
+fn test_float_constant_inf() {
+    let res = float_constant("inf");
+    assert_eq!(res, Ok(("", std::f64::INFINITY)));
 
-    let res = dec_float_constant("2.0e5");
-    assert_eq!(res, Ok(("", 2.0e5)));
-
-    let res = dec_float_constant("-2.0e5");
-    assert_eq!(res, Ok(("", -2.0e5)));
-
-    let res = dec_float_constant("2.1e5");
-    assert_eq!(res, Ok(("", 2.1e5)));
-
-    let res = dec_float_constant("-2.1e5");
-    assert_eq!(res, Ok(("", -2.1e5)));
-
-    let res = dec_float_constant(".91234e5");
-    assert_eq!(res, Ok(("", 0.91234e5)));
-
-    let res = dec_float_constant("-.12e5");
-    assert_eq!(res, Ok(("", -0.12e5)));
-
-    let res = dec_float_constant("2.0E5");
-    assert_eq!(res, Ok(("", 2.0e5)));
-
-    let res = dec_float_constant("-2.0E5");
-    assert_eq!(res, Ok(("", -2.0e5)));
-
-    let res = dec_float_constant("2.1E5");
-    assert_eq!(res, Ok(("", 2.1e5)));
-
-    let res = dec_float_constant("-2.1E5");
-    assert_eq!(res, Ok(("", -2.1e5)));
-
-    let res = dec_float_constant(".91234E5");
-    assert_eq!(res, Ok(("", 0.91234e5)));
-
-    let res = dec_float_constant("-.12E5");
-    assert_eq!(res, Ok(("", -0.12e5)));
+    let res = float_constant("-inf");
+    assert_eq!(res, Ok(("", std::f64::NEG_INFINITY)));
 }
 
+#[test]
+fn test_float_constant_infinity() {
+    let res = float_constant("infinity");
+    assert_eq!(res, Ok(("", std::f64::INFINITY)));
+
+    let res = float_constant("-infinity");
+    assert_eq!(res, Ok(("", std::f64::NEG_INFINITY)));
+}
+
+/// FIXME: This recognizes hex integers as well
 fn hex_float_constant(input: &str) -> IResult<&str, FloatingConstant> {
     map_res(
-        all_consuming(recognize(preceded(
+        recognize(preceded(
             opt(plus_or_minus),
             preceded(
-                char('0'),
+                zero,
                 preceded(
                     one_of("xX"),
                     terminated(
                         alt((
-                            recognize(preceded(char('.'), hex_digit1)),
+                            recognize(preceded(period, hex_digit1)),
                             recognize(delimited(
-                                hex_digit1,
-                                char('.'),
-                                hex_digit0,
+                                hex_digit1, period, hex_digit0,
                             )),
                             hex_digit1,
                         )),
@@ -770,82 +838,101 @@ fn hex_float_constant(input: &str) -> IResult<&str, FloatingConstant> {
                     ),
                 ),
             ),
-        ))),
+        )),
         |value| parse_hexf64(value, false),
     )(input)
 }
 
+/// Parse `nan`
 fn nan(input: &str) -> IResult<&str, FloatingConstant> {
-    map(all_consuming(tag("nan")), |_| std::f64::NAN)(input)
-}
-
-#[test]
-fn test_nan() {
-    let res = nan("nan");
-    assert_eq!(
-        res.map(|(input, value)| input.is_empty() && value.is_nan()),
-        Ok(true)
-    );
-    let res = nan("infinity");
-    assert!(res.is_err());
-    let res = nan("nanz");
-    assert!(res.is_err());
-}
-
-fn inf(input: &str) -> IResult<&str, FloatingConstant> {
-    map(all_consuming(tag("inf")), |_| std::f64::INFINITY)(input)
-}
-
-#[test]
-fn test_inf() {
-    let res = inf("inf");
-    assert_eq!(res, Ok(("", std::f64::INFINITY)));
-    let res = inf("infinity");
-    assert!(res.is_err());
-}
-
-fn infinity(input: &str) -> IResult<&str, FloatingConstant> {
-    map(all_consuming(tag("infinity")), |_| std::f64::INFINITY)(input)
-}
-
-#[test]
-fn test_infinity() {
-    let res = infinity("infinity");
-    assert_eq!(res, Ok(("", std::f64::INFINITY)));
-    let res = infinity("infinitys");
-    assert!(res.is_err());
-    let res = infinity("foo");
-    assert!(res.is_err());
-}
-
-fn special_float_constant(input: &str) -> IResult<&str, FloatingConstant> {
     map(
-        tuple((opt(plus_or_minus), alt((nan, infinity, inf)))),
-        |(sign, value)| {
-            if let Some("-") = sign {
-                -value
+        terminated(opt(plus_or_minus), |input| {
+            nom::re_match!(input, r"\bnan\b")
+        }),
+        |sign| {
+            if let Some('-') = sign {
+                -std::f64::NAN
             } else {
-                value
+                std::f64::NAN
             }
         },
     )(input)
 }
 
 #[test]
+fn test_nan() {
+    let res = nan("nan");
+    assert_eq!(
+        res.map(|(input, value)| (input, value.is_nan())),
+        Ok(("", true))
+    );
+}
+
+#[test]
+fn test_invalid_nan() {
+    let res = nan("nanz");
+    assert!(res.is_err());
+}
+
+/// Parse `inf` or `infinity`
+fn inf_or_infinity(input: &str) -> IResult<&str, FloatingConstant> {
+    map(
+        terminated(opt(plus_or_minus), |input| {
+            nom::re_match!(input, r"\binf(inity)?\b")
+        }),
+        |sign| {
+            if let Some('-') = sign {
+                std::f64::NEG_INFINITY
+            } else {
+                std::f64::INFINITY
+            }
+        },
+    )(input)
+}
+
+#[test]
+fn test_inf_or_infinity_inf() {
+    let res = inf_or_infinity("inf");
+    assert_eq!(res, Ok(("", std::f64::INFINITY)));
+
+    let res = inf_or_infinity("-inf");
+    assert_eq!(res, Ok(("", std::f64::NEG_INFINITY)));
+}
+
+#[test]
+fn test_inf_or_infinity_infinity() {
+    let res = inf_or_infinity("infinity");
+    assert_eq!(res, Ok(("", std::f64::INFINITY)));
+
+    let res = inf_or_infinity("-infinity");
+    assert_eq!(res, Ok(("", std::f64::NEG_INFINITY)));
+}
+
+/// Parse `nan`, `inf`, or `infiniity`
+fn special_float_constant(input: &str) -> IResult<&str, FloatingConstant> {
+    alt((nan, inf_or_infinity))(input)
+}
+
+#[test]
 fn test_special_float_constant_nan() {
     let res = special_float_constant("nan");
     assert_eq!(
-        res.map(|(input, value)| input.is_empty()
-            && value.is_nan()
-            && value.is_sign_positive()),
-        Ok(true)
+        res.map(|(input, value)| (
+            input,
+            value.is_nan(),
+            value.is_sign_positive()
+        )),
+        Ok(("", true, true))
     );
+
     let res = special_float_constant("-nan");
     assert_eq!(
-        res.map(|(input, value)| input.is_empty()
-            && value.is_nan()
-            && value.is_sign_negative()),
-        Ok(true)
+        res.map(|(input, value)| (
+            input,
+            value.is_nan(),
+            value.is_sign_negative()
+        )),
+        Ok(("", true, true))
     );
 }
 
@@ -853,6 +940,7 @@ fn test_special_float_constant_nan() {
 fn test_special_float_constant_inf() {
     let res = special_float_constant("inf");
     assert_eq!(res, Ok(("", std::f64::INFINITY)));
+
     let res = special_float_constant("-inf");
     assert_eq!(res, Ok(("", std::f64::NEG_INFINITY)));
 }
@@ -861,6 +949,7 @@ fn test_special_float_constant_inf() {
 fn test_special_float_constant_infinity() {
     let res = special_float_constant("infinity");
     assert_eq!(res, Ok(("", std::f64::INFINITY)));
+
     let res = special_float_constant("-infinity");
     assert_eq!(res, Ok(("", std::f64::NEG_INFINITY)));
 }
