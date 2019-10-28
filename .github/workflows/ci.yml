@@ -1,12 +1,48 @@
-name: Butte
-on: [push]
+on: push
+
+name: Continuous Integration
 
 jobs:
-  build:
-    name: Cargo Test
+  ci:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+          - beta
+          - nightly
+          - 1.31.0  # MSRV
+
     steps:
-      - name: 'Checkout the code'
+      - name: Checkout
         uses: actions/checkout@v1
-      - name: 'Cargo test'
-        run: cargo test
+
+      - name: Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+          components: rustfmt, clippy
+
+      - name: Format
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+
+      - name: Clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -- -D warnings
