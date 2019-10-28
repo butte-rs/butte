@@ -7,8 +7,8 @@ use nom::{
     branch::alt,
     bytes::complete::{escaped, tag, take_while, take_while_m_n},
     character::complete::{
-        char, digit0, digit1, hex_digit0, hex_digit1, multispace0, multispace1,
-        none_of, one_of, space0, space1,
+        char, digit0, digit1, hex_digit0, hex_digit1, multispace0, multispace1, none_of, one_of,
+        space0, space1,
     },
     combinator::{map, map_res, opt, recognize, value},
     multi::{many0, many1, separated_list, separated_nonempty_list},
@@ -353,12 +353,10 @@ rpc_service Greeter {
                             .name(Ident("SayManyHellos"))
                             .request_type(Ident("ManyHellosRequest"))
                             .response_type(Ident("HelloReply"))
-                            .metadata(Some(Metadata(HashMap::from_iter(vec![
-                                (
-                                    Ident("streaming"),
-                                    Some(SingleValue::StringConstant("server")),
-                                ),
-                            ]))))
+                            .metadata(Some(Metadata(HashMap::from_iter(vec![(
+                                Ident("streaming"),
+                                Some(SingleValue::StringConstant("server")),
+                            )]))))
                             .build(),
                     ])
                     .build(),
@@ -648,11 +646,7 @@ fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
     map(
         tuple((
             terminated(ident, space0),
-            delimited(
-                left_paren,
-                delimited(space0, ident, space0),
-                right_paren,
-            ),
+            delimited(left_paren, delimited(space0, ident, space0), right_paren),
             preceded(
                 delimited(space0, colon, space0),
                 terminated(
@@ -882,9 +876,7 @@ fn test_value_object() {
         result,
         Value::Object(Object(HashMap::from_iter(vec![(
             Ident("c"),
-            Value::List(vec![Value::SingleValue(SingleValue::StringConstant(
-                "a"
-            ))])
+            Value::List(vec![Value::SingleValue(SingleValue::StringConstant("a"))])
         )])))
     );
 
@@ -899,12 +891,8 @@ fn test_value_object() {
                 Value::Object(Object(HashMap::from_iter(vec![(
                     Ident("b"),
                     Value::List(vec![
-                        Value::SingleValue(SingleValue::Scalar(
-                            Scalar::Integer(1)
-                        )),
-                        Value::List(vec![Value::SingleValue(
-                            SingleValue::StringConstant("z")
-                        )])
+                        Value::SingleValue(SingleValue::Scalar(Scalar::Integer(1))),
+                        Value::List(vec![Value::SingleValue(SingleValue::StringConstant("z"))])
                     ])
                 )])))
             ])
@@ -1146,31 +1134,19 @@ fn float_constant(input: &str) -> IResult<&str, FloatingConstant> {
 fn test_float_constant_nan() {
     let result = float_constant("nan");
     assert_eq!(
-        result.map(|(input, value)| (
-            input,
-            value.is_nan(),
-            value.is_sign_positive()
-        )),
+        result.map(|(input, value)| (input, value.is_nan(), value.is_sign_positive())),
         Ok(("", true, true))
     );
 
     let result = float_constant("+nan");
     assert_eq!(
-        result.map(|(input, value)| (
-            input,
-            value.is_nan(),
-            value.is_sign_positive()
-        )),
+        result.map(|(input, value)| (input, value.is_nan(), value.is_sign_positive())),
         Ok(("", true, true))
     );
 
     let result = float_constant("-nan");
     assert_eq!(
-        result.map(|(input, value)| (
-            input,
-            value.is_nan(),
-            value.is_sign_negative()
-        )),
+        result.map(|(input, value)| (input, value.is_nan(), value.is_sign_negative())),
         Ok(("", true, true))
     );
 }
@@ -1258,31 +1234,19 @@ fn nan(input: &str) -> IResult<&str, FloatingConstant> {
 fn test_nan() {
     let result = nan("nan");
     assert_eq!(
-        result.map(|(input, value)| (
-            input,
-            value.is_nan(),
-            value.is_sign_positive()
-        )),
+        result.map(|(input, value)| (input, value.is_nan(), value.is_sign_positive())),
         Ok(("", true, true))
     );
 
     let result = nan("+nan");
     assert_eq!(
-        result.map(|(input, value)| (
-            input,
-            value.is_nan(),
-            value.is_sign_positive()
-        )),
+        result.map(|(input, value)| (input, value.is_nan(), value.is_sign_positive())),
         Ok(("", true, true))
     );
 
     let result = nan("-nan");
     assert_eq!(
-        result.map(|(input, value)| (
-            input,
-            value.is_nan(),
-            value.is_sign_negative()
-        )),
+        result.map(|(input, value)| (input, value.is_nan(), value.is_sign_negative())),
         Ok(("", true, true))
     );
 }
@@ -1339,31 +1303,19 @@ fn special_float_constant(input: &str) -> IResult<&str, FloatingConstant> {
 fn test_special_float_constant_nan() {
     let result = special_float_constant("nan");
     assert_eq!(
-        result.map(|(input, value)| (
-            input,
-            value.is_nan(),
-            value.is_sign_positive()
-        )),
+        result.map(|(input, value)| (input, value.is_nan(), value.is_sign_positive())),
         Ok(("", true, true))
     );
 
     let result = special_float_constant("+nan");
     assert_eq!(
-        result.map(|(input, value)| (
-            input,
-            value.is_nan(),
-            value.is_sign_positive()
-        )),
+        result.map(|(input, value)| (input, value.is_nan(), value.is_sign_positive())),
         Ok(("", true, true))
     );
 
     let result = special_float_constant("-nan");
     assert_eq!(
-        result.map(|(input, value)| (
-            input,
-            value.is_nan(),
-            value.is_sign_negative()
-        )),
+        result.map(|(input, value)| (input, value.is_nan(), value.is_sign_negative())),
         Ok(("", true, true))
     );
 }
