@@ -6,9 +6,9 @@ use typed_builder::TypedBuilder;
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Schema<'a> {
     #[builder(default)]
-    includes: Vec<Include<'a>>,
+    pub(crate) includes: Vec<Include<'a>>,
     #[builder(default)]
-    elements: Vec<Element<'a>>,
+    pub(crate) elements: Vec<Element<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -44,12 +44,12 @@ pub struct Attribute<'a>(pub(crate) Ident<'a>);
 
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct ProductType<'a> {
-    kind: ProductKind,
-    name: Ident<'a>,
-    fields: Vec<Field<'a>>, // one or more
+    pub(crate) kind: ProductKind,
+    pub(crate) name: Ident<'a>,
+    pub(crate) fields: Vec<Field<'a>>, // one or more
 
     #[builder(default)]
-    metadata: Option<Metadata<'a>>,
+    pub(crate) metadata: Option<Metadata<'a>>,
 }
 
 pub fn table<'a>(name: Ident<'a>, fields: Vec<Field<'a>>) -> ProductType<'a> {
@@ -74,12 +74,15 @@ pub enum ProductKind {
     Struct,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Enum<'a> {
     pub(crate) kind: EnumKind<'a>,
+    pub(crate) name: Ident<'a>,
+
+    pub(crate) values: Vec<EnumVal<'a>>,
+
+    #[builder(default)]
     pub(crate) metadata: Option<Metadata<'a>>,
-    pub(crate) values: Vec<EnumVal<'a>>, // zero or more?
-    pub(crate) ident: Ident<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -90,33 +93,33 @@ pub enum EnumKind<'a> {
 
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Field<'a> {
-    name: Ident<'a>,
-    ty: Type<'a>,
+    pub(crate) name: Ident<'a>,
+    pub(crate) ty: Type<'a>,
 
     #[builder(default)]
-    scalar: Option<Scalar>,
+    pub(crate) scalar: Option<Scalar>,
 
     #[builder(default)]
-    metadata: Option<Metadata<'a>>,
+    pub(crate) metadata: Option<Metadata<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Rpc<'a> {
-    name: Ident<'a>,
-    methods: Vec<RpcMethod<'a>>,
+    pub(crate) name: Ident<'a>,
+    pub(crate) methods: Vec<RpcMethod<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct RpcMethod<'a> {
-    name: Ident<'a>,
-    request_type: Ident<'a>,
-    response_type: Ident<'a>,
+    pub(crate) name: Ident<'a>,
+    pub(crate) request_type: Ident<'a>,
+    pub(crate) response_type: Ident<'a>,
 
     #[builder(default)]
-    metadata: Option<Metadata<'a>>,
+    pub(crate) metadata: Option<Metadata<'a>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum Type<'a> {
     Bool,
     Byte,
@@ -148,12 +151,12 @@ pub type IntegerConstant = i64;
 pub type FloatingConstant = f64;
 pub type BooleanConstant = bool;
 
-#[derive(Debug, Clone, PartialEq, Hash, TypedBuilder)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq, TypedBuilder)]
 pub struct EnumVal<'a> {
-    name: Ident<'a>,
+    pub(crate) name: Ident<'a>,
 
     #[builder(default)]
-    value: Option<IntegerConstant>,
+    pub(crate) value: Option<IntegerConstant>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

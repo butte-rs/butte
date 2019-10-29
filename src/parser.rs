@@ -466,35 +466,69 @@ fn test_quoted_attribute_decl() {
 }
 
 fn enum_decl(input: &str) -> IResult<&str, Enum> {
-    map(
-        tuple((
-            alt((
-                map(
-                    tuple((
-                        preceded(tag("enum"), delimited(space1, ident, space0)),
-                        preceded(colon, ty),
-                    )),
-                    |(id, t)| (id, EnumKind::Enum(t)),
-                ),
-                map(
-                    preceded(tag("union"), delimited(space1, ident, space0)),
-                    |id| (id, EnumKind::Union),
-                ),
+    let parser = tuple((
+        // enum or union
+        alt((
+            tuple((
+                preceded(tag("enum"), delimited(space1, ident, space0)),
+                preceded(colon, preceded(space0, map(ty, EnumKind::Enum))),
             )),
-            metadata,
-            delimited(
-                delimited(space0, left_brace, multispace0),
-                separated_nonempty_list(comma, enumval_decl),
-                preceded(multispace0, right_brace),
+            map(
+                preceded(tag("union"), delimited(space1, ident, space0)),
+                |id| (id, EnumKind::Union),
             ),
         )),
-        |((ident, kind), metadata, values)| Enum {
-            kind,
-            metadata,
-            values,
-            ident,
-        },
-    )(input)
+        // optional metadata
+        metadata,
+        // comma separated list of enum values or union fields
+        delimited(
+            delimited(multispace0, left_brace, multispace0),
+            separated_nonempty_list(delimited(space0, comma, space0), enumval_decl),
+            preceded(multispace0, right_brace),
+        ),
+    ));
+    map(parser, |((name, kind), metadata, values)| {
+        Enum::builder()
+            .name(name)
+            .kind(kind)
+            .values(values)
+            .metadata(metadata)
+            .build()
+    })(input)
+}
+
+#[test]
+fn test_simple_enum() {
+    let input = "enum MyEnum : int32 { foo = 1, bar }";
+    let result = enum_decl(input);
+    let expected = Enum::builder()
+        .name(Ident("MyEnum"))
+        .kind(EnumKind::Enum(Type::Int32))
+        .values(vec![
+            EnumVal::builder().name(Ident("foo")).value(Some(1)).build(),
+            EnumVal::builder().name(Ident("bar")).build(),
+        ])
+        .build();
+    assert_successful_parse!(result, expected);
+}
+
+#[test]
+fn test_simple_union() {
+    let input = "union MyUnion { foo = 1, bar, Baz=     234 }";
+    let result = enum_decl(input);
+    let expected = Enum::builder()
+        .name(Ident("MyUnion"))
+        .kind(EnumKind::Union)
+        .values(vec![
+            EnumVal::builder().name(Ident("foo")).value(Some(1)).build(),
+            EnumVal::builder().name(Ident("bar")).build(),
+            EnumVal::builder()
+                .name(Ident("Baz"))
+                .value(Some(234))
+                .build(),
+        ])
+        .build();
+    assert_successful_parse!(result, expected);
 }
 
 fn root_decl(input: &str) -> IResult<&str, Root> {
@@ -752,6 +786,27 @@ fn test_simple_metadata() {
         Ident("a"),
         Some(SingleValue::StringConstant("b")),
     )])));
+    assert_successful_parse!(result, expected);
+}
+
+#[test]
+fn test_empty_metadata() {
+    let input = "()";
+    let result = metadata(input);
+    let expected = Some(Metadata(HashMap::new()));
+    assert_successful_parse!(result, expected);
+}
+
+#[test]
+fn test_keys_only_metadata() {
+    let input = "(a, b, c, def)";
+    let result = metadata(input);
+    let expected = Some(Metadata(HashMap::from_iter(vec![
+        (Ident("a"), None),
+        (Ident("b"), None),
+        (Ident("c"), None),
+        (Ident("def"), None),
+    ])));
     assert_successful_parse!(result, expected);
 }
 
