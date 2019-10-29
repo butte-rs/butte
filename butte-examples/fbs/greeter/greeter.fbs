@@ -1,0 +1,25 @@
+/// A response from the server
+/// Useful for getting a greeting back!
+table HelloReply {
+  message: string;
+}
+
+table HelloRequest {
+  name: string;
+}
+
+table ManyHellosRequest {
+  name: string;
+  num_greetings: int;
+}
+
+enum Foo : int32 {
+  a,
+  b,
+  c
+}
+
+rpc_service Greeter {
+  SayHello(HelloRequest) : HelloReply;
+  SayManyHellos(ManyHellosRequest) : HelloReply (streaming: "server");
+}
