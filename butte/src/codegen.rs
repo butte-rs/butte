@@ -3,6 +3,7 @@ use crate::types::*;
 #[cfg(test)]
 use crate::{field, table};
 
+use flatbuffers;
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
@@ -93,7 +94,7 @@ impl ToTokens for Scalar {
 }
 
 fn raw_offset_name(name: impl AsRef<str>) -> String {
-    format!("VT_{}", name.as_ref().to_uppercase())
+    format!("VT_{}", name.as_ref().to_snake_case().to_uppercase())
 }
 
 fn offset_name(name: impl AsRef<str>) -> impl ToTokens {
@@ -105,6 +106,16 @@ fn to_arg_type(ty: &Type, lifetime: impl ToTokens) -> impl ToTokens {
         Type::String => quote!(flatbuffers::WIPOffset<&#lifetime str>),
         _ => quote!(#ty),
     }
+}
+
+const FIXED_FIELDS: flatbuffers::VOffsetT = 2; // Vtable size and Object Size.
+const SIZE_OF_OFFSET_TYPE: flatbuffers::VOffsetT =
+    std::mem::size_of::<flatbuffers::VOffsetT>() as flatbuffers::VOffsetT;
+
+/// Convert a Field ID to a virtual table offset. Ported from the flatc C++ code.
+fn field_index_to_offset(field_index: usize) -> flatbuffers::VOffsetT {
+    let field_index_value: flatbuffers::VOffsetT = field_index.try_into().unwrap();
+    field_index_value + FIXED_FIELDS * SIZE_OF_OFFSET_TYPE
 }
 
 impl ToTokens for Table<'_> {
@@ -197,30 +208,27 @@ impl ToTokens for Table<'_> {
                 }
             }
         });
+
         let field_offset_constants =
             fields
                 .iter()
                 .enumerate()
                 .map(|(index, Field { id: field_id, .. })| {
                     let name = offset_name(field_id);
+                    let offset_value = field_index_to_offset(index);
                     quote! {
-                        pub const #name: flatbuffers::VOffsetT = #index as flatbuffers::VOffsetT;
+                        pub const #name: flatbuffers::VOffsetT = #offset_value;
                     }
                 });
         let struct_offset_enum_name = format_ident!("{}Offset", struct_id.raw);
 
-        let required_fields = fields.iter().map(
-            |Field {
-                 id: Ident { raw: raw_field_id },
-                 ..
-             }| {
-                let snake_name = raw_field_id.to_snake_case();
-                let offset_name = format_ident!("VT_{}", snake_name.to_uppercase());
-                quote! {
-                    self.fbb.required(o, <#struct_id>::#offset_name, #snake_name);
-                }
-            },
-        );
+        let required_fields = fields.iter().map(|Field { id: field_id, .. }| {
+            let snake_name = raw_offset_name(field_id);
+            let offset_name = offset_name(field_id);
+            quote! {
+                self.fbb.required(o, <#struct_id>::#offset_name, #snake_name);
+            }
+        });
         (quote! {
             pub enum #struct_offset_enum_name {}
 
