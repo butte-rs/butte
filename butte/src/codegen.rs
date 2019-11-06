@@ -223,7 +223,7 @@ impl ToTokens for Table<'_> {
         let struct_offset_enum_name = format_ident!("{}Offset", struct_id.raw);
 
         let required_fields = fields.iter().map(|Field { id: field_id, .. }| {
-            let snake_name = raw_offset_name(field_id);
+            let snake_name = field_id.raw.to_snake_case();
             let offset_name = offset_name(field_id);
             quote! {
                 self.fbb.required(o, <#struct_id>::#offset_name, #snake_name);
