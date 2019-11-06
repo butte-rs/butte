@@ -1,34 +1,5 @@
-[package]
-name = "butte"
-version = "0.1.0"
-authors = ["Phillip Cloud <cpcloud@gmail.com>"]
-description = "A Rust implementation of flatbuffers"
-license = "MIT"
-repository = "https://github.com/butte-rs/butte"
-readme = "README.md"
-edition = "2018"
-keywords = [
-    "flatbuffers",
-    "flatbuffer",
-    "codegen",
-    "data",
-    "performance",
-    "parsing",
-    "encoding",
-    "encode",
-    "decoding",
-    "decode",
-    "serialization",
-    "serialize",
-    "deserialization",
-    "deserialize",
-    "rpc",
-    "grpc",
-    "service",
+[workspace]
+members = [
+    "butte",
+    "butte-examples",
 ]
-categories = ["data-structures", "encoding", "parser-implementations"]
-
-[dependencies]
-hexf-parse = "0.1.0"
-nom = { version = "5.0.1", features = ["regexp"] }
-typed-builder = "0.3.0"

@@ -1,0 +1,22 @@
+[package]
+name = "butte-examples"
+version = "0.1.0"
+authors = ["Phillip Cloud <cpcloud@gmail.com>"]
+description = "Examples of how to use Butte"
+license = "MIT"
+repository = "https://github.com/butte-rs/butte"
+edition = "2018"
+keywords = ["examples", "flatbuffers", "flatbuffer", "codegen"]
+
+[[bin]]
+name = "greeter"
+path = "src/greeter/greeter.rs"
+
+[dependencies]
+derive_more = "0.15.0"
+flatbuffers = "0.6.0"
+butte = { path = "../butte" }
+
+[build-dependencies]
+anyhow = "1.0.19"
+butte = { path = "../butte" }
