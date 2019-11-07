@@ -232,10 +232,16 @@ impl ToTokens for Table<'_> {
         (quote! {
             pub enum #struct_offset_enum_name {}
 
-            #[derive(Copy, Clone, Debug, PartialEq, derive_more::From)]
+            #[derive(Copy, Clone, Debug, PartialEq)]
             #doc
             pub struct #struct_id<'a> {
                 table: flatbuffers::Table<'a>,
+            }
+
+            impl<'a> From<flatbuffers::Table<'a>> for #struct_id<'a> {
+                fn from(table: flatbuffers::Table<'a>) -> Self {
+                    Self { table }
+                }
             }
 
             impl<'a> #struct_id<'a> {
