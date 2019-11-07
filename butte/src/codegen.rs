@@ -3,25 +3,16 @@ use crate::types::*;
 #[cfg(test)]
 use crate::{field, table};
 
-use flatbuffers;
-use heck::SnakeCase;
+use flatbuffers::VOffsetT;
+use heck::{ShoutySnakeCase, SnakeCase};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
-use std::convert::TryInto;
+use std::{
+    convert::TryInto,
+    fmt::{Debug, Display},
+    ops::Add,
+};
 use syn::spanned::Spanned;
-
-pub trait AsArgType: ToTokens {
-    fn as_arg_type(&self, lifetime: Option<impl ToTokens>) -> TokenStream;
-}
-
-impl AsArgType for Type<'_> {
-    fn as_arg_type(&self, lifetime: Option<impl ToTokens>) -> TokenStream {
-        match self {
-            Type::String => quote!(flatbuffers::WIPOffset<&#lifetime str>),
-            _ => quote!(#self),
-        }
-    }
-}
 
 #[cfg(test)]
 fn to_code(value: impl ToTokens) -> String {
@@ -93,14 +84,7 @@ impl ToTokens for Scalar {
     }
 }
 
-fn raw_offset_name(name: impl AsRef<str>) -> String {
-    format!("VT_{}", name.as_ref().to_snake_case().to_uppercase())
-}
-
-fn offset_name(name: impl AsRef<str>) -> impl ToTokens {
-    format_ident!("{}", raw_offset_name(name))
-}
-
+/// Convert a `types::Type` to an argument type.
 fn to_arg_type(ty: &Type, lifetime: impl ToTokens) -> impl ToTokens {
     match ty {
         Type::String => quote!(flatbuffers::WIPOffset<&#lifetime str>),
@@ -108,14 +92,37 @@ fn to_arg_type(ty: &Type, lifetime: impl ToTokens) -> impl ToTokens {
     }
 }
 
-const FIXED_FIELDS: flatbuffers::VOffsetT = 2; // Vtable size and Object Size.
-const SIZE_OF_OFFSET_TYPE: flatbuffers::VOffsetT =
-    std::mem::size_of::<flatbuffers::VOffsetT>() as flatbuffers::VOffsetT;
+/// The base offset for flatbuffers fields
+const FIXED_FIELDS: VOffsetT = 2; // Vtable size and Object Size.
+
+/// The size in bytes of the offset type
+const SIZE_OF_OFFSET_TYPE: VOffsetT = std::mem::size_of::<VOffsetT>() as VOffsetT;
 
 /// Convert a Field ID to a virtual table offset. Ported from the flatc C++ code.
-fn field_index_to_offset(field_index: usize) -> flatbuffers::VOffsetT {
-    let field_index_value: flatbuffers::VOffsetT = field_index.try_into().unwrap();
-    field_index_value + FIXED_FIELDS * SIZE_OF_OFFSET_TYPE
+fn field_index_to_offset<I>(field_index: I) -> VOffsetT
+where
+    I: Add + TryInto<VOffsetT>,
+    I::Error: Debug,
+{
+    let field_index_value: VOffsetT = field_index
+        .try_into()
+        .expect("cannot convert field index value to VOffsetT");
+    (field_index_value + FIXED_FIELDS) * SIZE_OF_OFFSET_TYPE
+}
+
+#[cfg(test)]
+mod field_index_to_offset_tests {
+    use super::*;
+
+    #[test]
+    fn test_field_index_value() {
+        assert_eq!(field_index_to_offset(0), 4);
+        assert_eq!(field_index_to_offset(1), 6);
+    }
+}
+
+fn offset_id(field: &Field) -> impl ToTokens {
+    format_ident!("VT_{}", field.id.as_ref().to_shouty_snake_case())
 }
 
 impl ToTokens for Table<'_> {
@@ -143,7 +150,7 @@ impl ToTokens for Table<'_> {
                  scalar,
                  ..
              }| {
-                let arg_ty = ty.as_arg_type(Some(quote!('a)));
+                let arg_ty = to_arg_type(ty, quote!('a));
                 // Scalar fields can have a default value
                 let default = if let Some(default_value) = scalar {
                     quote!(#[default = #default_value])
@@ -188,7 +195,7 @@ impl ToTokens for Table<'_> {
                 ..
             } = field;
             let add_method_name = format_ident!("add_{}", field_id.raw);
-            let offset = offset_name(field_id);
+            let offset = offset_id(&field);
             let field_offset = quote!(#struct_id::#offset);
             let arg_ty = to_arg_type(ty, quote!('_));
             let body = if ty.is_scalar() {
@@ -209,22 +216,18 @@ impl ToTokens for Table<'_> {
             }
         });
 
-        let field_offset_constants =
-            fields
-                .iter()
-                .enumerate()
-                .map(|(index, Field { id: field_id, .. })| {
-                    let name = offset_name(field_id);
-                    let offset_value = field_index_to_offset(index);
-                    quote! {
-                        pub const #name: flatbuffers::VOffsetT = #offset_value;
-                    }
-                });
+        let field_offset_constants = fields.iter().enumerate().map(|(index, field)| {
+            let offset_name = offset_id(&field);
+            let offset_value = field_index_to_offset(index);
+            quote! {
+                pub const #offset_name: flatbuffers::VOffsetT = #offset_value;
+            }
+        });
         let struct_offset_enum_name = format_ident!("{}Offset", struct_id.raw);
 
-        let required_fields = fields.iter().map(|Field { id: field_id, .. }| {
-            let snake_name = field_id.raw.to_snake_case();
-            let offset_name = offset_name(field_id);
+        let required_fields = fields.iter().map(|field| {
+            let snake_name = field.id.as_ref().to_snake_case();
+            let offset_name = offset_id(field);
             quote! {
                 self.fbb.required(o, <#struct_id>::#offset_name, #snake_name);
             }
@@ -433,7 +436,7 @@ impl ToTokens for Rpc<'_> {
     }
 }
 
-fn lit_int(value: i64, base_type: impl Spanned + std::fmt::Display) -> impl ToTokens {
+fn lit_int(value: impl Display, base_type: impl Spanned + Display) -> impl ToTokens {
     let stringified_int = format!("{}_{}", value, base_type);
     syn::LitInt::new(&stringified_int, base_type.span())
 }
