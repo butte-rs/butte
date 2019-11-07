@@ -31,6 +31,7 @@ categories = ["data-structures", "encoding", "parser-implementations"]
 [dependencies]
 anyhow = "1.0.19"
 derive_more = "0.15.0"
+flatbuffers = "0.6.0"
 heck = "0.3.1"
 hexf-parse = "0.1.0"
 nom = { version = "5.0.1", features = ["regexp"] }
