@@ -19,6 +19,8 @@ enum Foo : int32 {
   c
 }
 
+/// A greeter service!
+/// ... with a multiline doc comment?!
 rpc_service Greeter {
   SayHello(HelloRequest) : HelloReply;
   SayManyHellos(ManyHellosRequest) : HelloReply (streaming: "server");
