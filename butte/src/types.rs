@@ -22,7 +22,7 @@ pub struct Include<'a> {
     pub stem: &'a str,
 
     #[builder(default)]
-    pub doc: Comment,
+    pub doc: Comment<'a>,
 }
 
 /// A single schema file element
@@ -35,7 +35,7 @@ pub enum Element<'a> {
     Union(Union<'a>),
     Root(Root<'a>),
     FileExtension(FileExtension<'a>),
-    FileIdentifier(FileIdentifier),
+    FileIdentifier(FileIdentifier<'a>),
     Attribute(Attribute<'a>),
     Rpc(Rpc<'a>),
     Object(Object<'a>),
@@ -47,7 +47,7 @@ pub struct Root<'a> {
     pub typename: Ident<'a>,
 
     #[builder(default)]
-    pub doc: Comment,
+    pub doc: Comment<'a>,
 }
 
 /// The extension to use when creating flatbuffers binary files
@@ -56,16 +56,16 @@ pub struct FileExtension<'a> {
     pub ext: &'a str,
 
     #[builder(default)]
-    pub doc: Comment,
+    pub doc: Comment<'a>,
 }
 
 /// A magic number for using flatbuffers as a file format
 #[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
-pub struct FileIdentifier {
+pub struct FileIdentifier<'a> {
     pub id: [char; 4],
 
     #[builder(default)]
-    pub doc: Comment,
+    pub doc: Comment<'a>,
 }
 
 /// The namespace in which the schema body resides
@@ -74,7 +74,7 @@ pub struct Namespace<'a> {
     pub parts: Vec<Ident<'a>>,
 
     #[builder(default)]
-    pub doc: Comment,
+    pub doc: Comment<'a>,
 }
 
 /// Declares an attribute to be used as metadata wherever metadata is valid
@@ -83,7 +83,7 @@ pub struct Attribute<'a> {
     pub attr: Ident<'a>,
 
     #[builder(default)]
-    pub doc: Comment,
+    pub doc: Comment<'a>,
 }
 
 /// Struct type
@@ -96,7 +96,7 @@ pub struct Struct<'a> {
     pub metadata: Option<Metadata<'a>>,
 
     #[builder(default)]
-    pub doc: Comment,
+    pub doc: Comment<'a>,
 }
 
 /// Table type
@@ -109,7 +109,7 @@ pub struct Table<'a> {
     pub metadata: Option<Metadata<'a>>,
 
     #[builder(default)]
-    pub doc: Comment,
+    pub doc: Comment<'a>,
 }
 
 /// Type representing enums
@@ -123,7 +123,7 @@ pub struct Enum<'a> {
     pub metadata: Option<Metadata<'a>>,
 
     #[builder(default)]
-    pub doc: Comment,
+    pub doc: Comment<'a>,
 }
 
 /// Type representing unions
@@ -136,7 +136,7 @@ pub struct Union<'a> {
     pub metadata: Option<Metadata<'a>>,
 
     #[builder(default)]
-    pub doc: Comment,
+    pub doc: Comment<'a>,
 }
 
 /// A field of a struct or table
@@ -152,7 +152,7 @@ pub struct Field<'a> {
     pub metadata: Option<Metadata<'a>>,
 
     #[builder(default)]
-    pub doc: Comment,
+    pub doc: Comment<'a>,
 }
 
 /// An RPC service
@@ -162,7 +162,7 @@ pub struct Rpc<'a> {
     pub methods: Vec<RpcMethod<'a>>,
 
     #[builder(default)]
-    pub doc: Comment,
+    pub doc: Comment<'a>,
 }
 
 /// A method in an RPC service
@@ -176,7 +176,7 @@ pub struct RpcMethod<'a> {
     pub metadata: Option<Metadata<'a>>,
 
     #[builder(default)]
-    pub doc: Comment,
+    pub doc: Comment<'a>,
 }
 
 /// Flatbuffer scalar, array types and user-defined types
@@ -336,9 +336,9 @@ impl AsRef<str> for Ident<'_> {
 
 /// A documentation comment
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default, From, TypedBuilder)]
-pub struct Comment {
+pub struct Comment<'a> {
     #[builder(default)]
-    pub text: Option<String>,
+    pub lines: Vec<&'a str>,
 }
 
 /// The root type of the file, there can be only one. This is different from
@@ -361,7 +361,7 @@ pub struct File<'a> {
     pub root_type: Option<RootType<'a>>,
 
     #[builder(default)]
-    pub file_identifier: Option<FileIdentifier>,
+    pub file_identifier: Option<FileIdentifier<'a>>,
 
     #[builder(default)]
     pub file_extension: Option<FileExtension<'a>>,

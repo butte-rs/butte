@@ -3,8 +3,8 @@ use anyhow::{anyhow, Result};
 
 #[cfg(test)]
 use crate::{
-    comment as doc, e_item, element as elem, enum_, field, meta, method, namespace, rpc, schema,
-    table, union, value as val,
+    comment as doc, e_item, element as elem, enum_, field, meta, method, namespace, object as obj,
+    rpc, schema, table, union, value as val,
 };
 
 use hexf_parse::parse_hexf64;
@@ -171,17 +171,13 @@ mod ident_tests {
 pub fn string_constant(input: &str) -> IResult<&str, &str> {
     map(
         delimited(
-            multispace0,
-            delimited(
-                double_quote,
-                opt(escaped(
-                    none_of("\\\""),
-                    '\\',
-                    alt((backslash, double_quote)),
-                )),
-                double_quote,
-            ),
-            multispace0,
+            double_quote,
+            opt(escaped(
+                none_of("\\\""),
+                '\\',
+                alt((backslash, double_quote)),
+            )),
+            double_quote,
         ),
         |string| string.unwrap_or(""),
     )(input)
@@ -194,15 +190,6 @@ mod string_constant_tests {
     #[test]
     fn test_string_constant() {
         let result = string_constant("\"a b c D \\\"z1\"");
-        assert_successful_parse!(result, "a b c D \\\"z1");
-    }
-
-    #[test]
-    fn test_string_constant_ws() {
-        let result = string_constant("  \"a b c D \\\"z1\"");
-        assert_successful_parse!(result, "a b c D \\\"z1");
-
-        let result = string_constant("  \"a b c D \\\"z1\"  \n\t\r");
         assert_successful_parse!(result, "a b c D \\\"z1");
     }
 
@@ -252,25 +239,76 @@ rpc_service Greeter {
     }
 }
 
-/// Parse a flatbuffer schema into a tree.
+/// Parse one line of a non-documentation comment.
+pub fn comment(input: &str) -> IResult<&str, ()> {
+    // two slashes followed by not-one-slash, followed by not-a-line-ending
+    value((), tuple((tag("//"), not(tag("/")), not_line_ending)))(input)
+}
+
+pub fn comment_or_space(input: &str) -> IResult<&str, ()> {
+    alt((complete(comment), value((), complete(multispace1))))(input)
+}
+
+pub fn comment_or_space0(input: &str) -> IResult<&str, ()> {
+    value((), many0(comment_or_space))(input)
+}
+
+pub fn comment_or_space1(input: &str) -> IResult<&str, ()> {
+    value((), many1(comment_or_space))(input)
+}
+
+/// Parse a flatbuffer schema.
 pub fn schema_decl(input: &str) -> IResult<&str, Schema> {
     map(
         tuple((
-            many0(delimited(multispace0, include_decl, multispace0)),
-            many0(delimited(multispace0, element, multispace0)),
+            many0(delimited(
+                comment_or_space0,
+                include_decl,
+                comment_or_space0,
+            )),
+            many0(delimited(comment_or_space0, element, comment_or_space0)),
         )),
-        |(includes, elements)| {
-            Schema::builder()
-                .includes(includes)
-                .elements(elements)
-                .build()
-        },
+        Schema::from,
     )(input)
 }
 
 #[cfg(test)]
 mod schema_tests {
     use super::*;
+
+    #[test]
+    fn test_simple_include_with_comments() {
+        let input = "//baz\ninclude \"a\"; // bar\n";
+        let parser = many0(delimited(
+            comment_or_space0,
+            include_decl,
+            comment_or_space0,
+        ));
+        let result = parser(input);
+        let expected = vec![Include::builder().path(Path::new("a")).stem("a").build()];
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_includes_only_schema() {
+        let input = r#"include "a"; // bar
+        // foo
+include "b";
+
+
+include "foo/bar/baz.fbs";
+
+    "#;
+        let result = schema_decl(input);
+        let expected = schema! {
+            include {
+                "a",
+                "b",
+                "foo/bar/baz.fbs"
+            }
+        };
+        assert_successful_parse!(result, expected);
+    }
 
     #[test]
     fn test_elements_only_schema() {
@@ -290,26 +328,6 @@ table MyMessage {
     }
 
     #[test]
-    fn test_includes_only_schema() {
-        let input = r#"include "a";
-include "b";
-
-
-include "foo/bar/baz.fbs";
-
-    "#;
-        let result = schema_decl(input);
-        let expected = schema! {
-            include {
-                "a",
-                "b",
-                "foo/bar/baz.fbs"
-            }
-        };
-        assert_successful_parse!(result, expected);
-    }
-
-    #[test]
     fn test_full_schema() {
         let input = r#"
 
@@ -317,7 +335,9 @@ include "foo/bar/baz.fbs";
 
 table HelloReply {
   message:string;
-}
+} // bar
+
+// foo!
 
 table HelloRequest {
   name:string;
@@ -366,7 +386,11 @@ pub fn include_decl(input: &str) -> IResult<&str, Include> {
             doc_comment,
             delimited(
                 tag("include"),
-                delimited(multispace1, map(string_constant, Path::new), multispace0),
+                delimited(
+                    comment_or_space1,
+                    map(string_constant, Path::new),
+                    comment_or_space0,
+                ),
                 semicolon,
             ),
         )),
@@ -388,6 +412,19 @@ pub fn include_decl(input: &str) -> IResult<&str, Include> {
 #[cfg(test)]
 mod include_tests {
     use super::*;
+
+    #[test]
+    fn test_include_decl_with_comments() {
+        let result = include_decl(
+            "include //fizz
+            //buzz\n\t\"foo\"//bzz\n;",
+        );
+        let expected = Include::builder()
+            .path(Path::new("foo"))
+            .stem("foo")
+            .build();
+        assert_successful_parse!(result, expected);
+    }
 
     #[test]
     fn test_include_decl() {
@@ -433,9 +470,12 @@ pub fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
             delimited(
                 tag("namespace"),
                 delimited(
-                    multispace1,
-                    separated_nonempty_list(delimited(multispace0, tag("."), multispace0), ident),
-                    multispace0,
+                    comment_or_space1,
+                    separated_nonempty_list(
+                        delimited(comment_or_space0, tag("."), comment_or_space0),
+                        ident,
+                    ),
+                    comment_or_space0,
                 ),
                 semicolon,
             ),
@@ -447,6 +487,14 @@ pub fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
 #[cfg(test)]
 mod namespace_tests {
     use super::*;
+
+    #[test]
+    fn test_namespace_decl_with_comments() {
+        let result =
+            namespace_decl("namespace // a namespace comment \na// Yet another one\t\n\n\n;");
+        let expected = namespace!(a);
+        assert_successful_parse!(result, expected);
+    }
 
     #[test]
     fn test_one_level_namespace_decl() {
@@ -484,9 +532,9 @@ pub fn attribute_decl(input: &str) -> IResult<&str, Attribute> {
             delimited(
                 tag("attribute"),
                 delimited(
-                    multispace1,
+                    comment_or_space1,
                     alt((ident, map(string_constant, Ident::from))),
-                    multispace0,
+                    comment_or_space0,
                 ),
                 semicolon,
             ),
@@ -498,6 +546,16 @@ pub fn attribute_decl(input: &str) -> IResult<&str, Attribute> {
 #[cfg(test)]
 mod attribute_tests {
     use super::*;
+
+    #[test]
+    fn test_simple_attribute_decl_with_comments() {
+        let result = attribute_decl(
+            "attribute// gah, an attr!
+            a;",
+        );
+        let expected = Attribute::builder().attr("a").build();
+        assert_successful_parse!(result, expected);
+    }
 
     #[test]
     fn test_simple_attribute_decl() {
@@ -523,17 +581,23 @@ mod attribute_tests {
 
 pub fn enum_body(input: &str) -> IResult<&str, Vec<EnumVal>> {
     delimited(
-        delimited(multispace0, left_brace, multispace0),
-        separated_nonempty_list(delimited(multispace0, comma, multispace0), enumval_decl),
-        preceded(multispace0, right_brace),
+        delimited(comment_or_space0, left_brace, comment_or_space0),
+        separated_nonempty_list(
+            delimited(comment_or_space0, comma, comment_or_space0),
+            enumval_decl,
+        ),
+        preceded(comment_or_space0, right_brace),
     )(input)
 }
 
 pub fn enum_decl(input: &str) -> IResult<&str, Enum> {
     let parser = tuple((
         doc_comment,
-        preceded(tag("enum"), delimited(multispace1, ident, multispace0)),
-        preceded(colon, preceded(multispace0, ty)),
+        preceded(
+            tag("enum"),
+            delimited(comment_or_space1, ident, comment_or_space0),
+        ),
+        preceded(colon, preceded(comment_or_space0, ty)),
         metadata,
         enum_body,
     ));
@@ -553,6 +617,20 @@ mod enum_tests {
     use super::*;
 
     #[test]
+    fn test_simple_enum_with_comments() {
+        let input = "enum // thing
+        MyEnum //other thing!
+        // jazz?
+: int32 // fiz!
+        { foo // bar
+            = 1, bar //ugh!
+        }";
+        let result = enum_decl(input);
+        let expected = enum_!(MyEnum, Int32, [e_item!(foo = 1), e_item!(bar)]);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
     fn test_simple_enum() {
         let input = "enum MyEnum : int32 { foo = 1, bar }";
         let result = enum_decl(input);
@@ -564,7 +642,10 @@ mod enum_tests {
 pub fn union_decl(input: &str) -> IResult<&str, Union> {
     let parser = tuple((
         doc_comment,
-        preceded(tag("union"), delimited(multispace1, ident, multispace0)),
+        preceded(
+            tag("union"),
+            delimited(comment_or_space1, ident, comment_or_space0),
+        ),
         metadata,
         enum_body,
     ));
@@ -583,8 +664,23 @@ mod union_tests {
     use super::*;
 
     #[test]
+    fn test_simple_union_with_comments() {
+        let input = "union //foo!\nMyUnion // comment
+            //comment\n// thing\n{ // comm
+            foo // foo!
+            = 1//bar
+            ,\t\tbar, //baz! field\nBaz=     234 \n\n // ha!\n}";
+        let result = union_decl(input);
+        let expected = union!(
+            MyUnion,
+            [e_item!(foo = 1), e_item!(bar), e_item!(Baz = 234)]
+        );
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
     fn test_simple_union() {
-        let input = "union MyUnion \n{ foo = 1, bar, Baz=     234 \n\n}";
+        let input = "union MyUnion { foo = 1, bar, Baz = 234 }";
         let result = union_decl(input);
         let expected = union!(
             MyUnion,
@@ -600,7 +696,7 @@ pub fn root_decl(input: &str) -> IResult<&str, Root> {
             doc_comment,
             delimited(
                 tag("root_type"),
-                delimited(multispace1, ident, multispace0),
+                delimited(comment_or_space1, ident, comment_or_space0),
                 semicolon,
             ),
         )),
@@ -625,15 +721,15 @@ pub fn field_decl(input: &str) -> IResult<&str, Field> {
         terminated(
             tuple((
                 doc_comment,
-                terminated(ident, tuple((multispace0, colon, multispace0))),
+                terminated(ident, tuple((comment_or_space0, colon, comment_or_space0))),
                 ty,
                 opt(preceded(
-                    tuple((multispace0, equals, multispace0)),
-                    terminated(scalar, multispace0),
+                    tuple((comment_or_space0, equals, comment_or_space0)),
+                    terminated(scalar, comment_or_space0),
                 )),
                 metadata,
             )),
-            tuple((multispace0, semicolon)),
+            tuple((comment_or_space0, semicolon)),
         ),
         |(comment, name, ty, scalar, metadata)| {
             Field::builder()
@@ -652,37 +748,44 @@ mod field_tests {
     use super::*;
 
     #[test]
-    fn test_field_decl() {
-        let input = "foo: float64 = 2;";
+    fn test_field_decl_with_comments() {
+        // please never write a field like this
+        let input = "\
+foo // bar
+// baz
+ :
+\tfloat64 // fizz
+=         // buuzzzz
+\t\t\t2.0
+
+
+;";
         let result = field_decl(input);
-        let expected = Field::builder()
-            .id(Ident::from("foo"))
-            .ty(Type::Float64)
-            .scalar(Scalar::Integer(2))
-            .build();
+        let expected = field!(foo, Float64 = 2.0);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_field_decl() {
+        let input = "foo: float64 = 2.0;";
+        let result = field_decl(input);
+        let expected = field!(foo, Float64 = 2.0);
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_field_decl_uint() {
-        let input = "foo :uint=3.0;";
+        let input = "foo :uint=3;";
         let result = field_decl(input);
-        let expected = Field::builder()
-            .id(Ident::from("foo"))
-            .ty(Type::UInt)
-            .scalar(Scalar::Float(3.0))
-            .build();
+        let expected = field!(foo, UInt = 3);
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_field_decl_no_scalar() {
-        let input = "foo:float64    ;";
+        let input = "foo:float64    //faz\n;";
         let result = field_decl(input);
-        let expected = Field::builder()
-            .id(Ident::from("foo"))
-            .ty(Type::Float64)
-            .build();
+        let expected = field!(foo, Float64);
         assert_successful_parse!(result, expected);
     }
 }
@@ -690,23 +793,44 @@ mod field_tests {
 pub fn rpc_decl(input: &str) -> IResult<&str, Rpc> {
     map(
         tuple((
+            doc_comment,
             preceded(
-                terminated(tag("rpc_service"), multispace1),
-                terminated(ident, multispace0),
+                terminated(tag("rpc_service"), comment_or_space1),
+                terminated(ident, comment_or_space0),
             ),
             delimited(
                 left_brace,
-                many1(delimited(multispace0, rpc_method, multispace0)),
+                many1(delimited(comment_or_space0, rpc_method, comment_or_space0)),
                 right_brace,
             ),
         )),
-        |(name, methods)| Rpc::builder().id(name).methods(methods).build(),
+        |(comment, name, methods)| {
+            Rpc::builder()
+                .doc(comment)
+                .id(name)
+                .methods(methods)
+                .build()
+        },
     )(input)
 }
 
 #[cfg(test)]
 mod rpc_tests {
     use super::*;
+
+    #[test]
+    fn test_rpc_decl_single_method_with_comments() {
+        let input = "\
+rpc_service Greeter { // foo
+    //b baz
+  SayHello(// foo
+  HelloRequest):HelloReply; // zaz
+// zu
+}";
+        let result = rpc_decl(input);
+        let expected = rpc!(Greeter, [method!(fn SayHello(HelloRequest) -> HelloReply)]);
+        assert_successful_parse!(result, expected);
+    }
 
     #[test]
     fn test_rpc_decl_single_method() {
@@ -739,22 +863,45 @@ rpc_service Greeter {
         );
         assert_successful_parse!(result, expected);
     }
+
+    #[test]
+    fn test_rpc_decl_doc_comment() {
+        let input = "\
+/// A greeter service!
+rpc_service Greeter {
+  SayHello   (HelloRequest ):HelloReply;
+  SayManyHellos(ManyHellosRequest):HelloReply  (streaming: \"server\"  ) ;
+
+}";
+        let result = rpc_decl(input);
+        let expected = rpc!(
+            Greeter,
+            doc!("A greeter service!"),
+            [
+                method!(fn SayHello(HelloRequest) -> HelloReply),
+                method!(fn SayManyHellos(ManyHellosRequest) -> HelloReply, [
+                    meta!(streaming, "server")
+                ])
+            ]
+        );
+        assert_successful_parse!(result, expected);
+    }
 }
 
 pub fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
     map(
         tuple((
-            terminated(ident, multispace0),
+            terminated(ident, comment_or_space0),
             delimited(
                 left_paren,
-                delimited(multispace0, ident, multispace0),
+                delimited(comment_or_space0, ident, comment_or_space0),
                 right_paren,
             ),
             preceded(
-                delimited(multispace0, colon, multispace0),
+                delimited(comment_or_space0, colon, comment_or_space0),
                 terminated(
-                    tuple((ident, preceded(multispace0, metadata))),
-                    terminated(multispace0, semicolon),
+                    tuple((ident, preceded(comment_or_space0, metadata))),
+                    terminated(comment_or_space0, semicolon),
                 ),
             ),
         )),
@@ -774,6 +921,25 @@ mod rpc_method_tests {
     use super::*;
 
     #[test]
+    fn test_rpc_method_with_comments() {
+        let input = "\
+SayHello // foo
+(// bar
+    HelloRequest
+        // fiizz
+        )
+//buzz
+// baz
+:
+    HelloReply // saz
+// fzz
+;";
+        let result = rpc_method(input);
+        let expected = method!(fn SayHello(HelloRequest) -> HelloReply);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
     fn test_rpc_method() {
         let input = "SayHello(HelloRequest):HelloReply;";
         let result = rpc_method(input);
@@ -785,6 +951,17 @@ mod rpc_method_tests {
     fn test_rpc_method_with_metadata() {
         let input =
             r#"SayHello(HelloRequest):HelloReply (streaming: "server", streaming: "server");"#;
+        let result = rpc_method(input);
+        let expected =
+            method!(fn SayHello(HelloRequest) -> HelloReply, [meta!(streaming, "server")]);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_rpc_method_with_metadata_and_comments() {
+        let input = r#"SayHello(HelloRequest):HelloReply (streaming:
+            // fuzz
+            "server", streaming: "server");"#;
         let result = rpc_method(input);
         let expected =
             method!(fn SayHello(HelloRequest) -> HelloReply, [meta!(streaming, "server")]);
@@ -831,31 +1008,29 @@ pub fn enumval_decl(input: &str) -> IResult<&str, EnumVal> {
     let parser = tuple((
         ident,
         opt(preceded(
-            multispace0,
-            preceded(equals, preceded(multispace0, integer_constant)),
+            comment_or_space0,
+            preceded(equals, preceded(comment_or_space0, integer_constant)),
         )),
     ));
-    map(parser, |(name, value)| {
-        EnumVal::builder().id(name).value(value).build()
-    })(input)
+    map(parser, EnumVal::from)(input)
 }
 
 /// Parse key-value metadata pairs.
 pub fn raw_metadata(input: &str) -> IResult<&str, Metadata> {
     map(
         delimited(
-            terminated(left_paren, multispace0),
+            terminated(left_paren, comment_or_space0),
             separated_list(
-                delimited(multispace0, comma, multispace0),
+                delimited(comment_or_space0, comma, comment_or_space0),
                 tuple((
                     ident,
                     opt(preceded(
-                        multispace0,
-                        preceded(colon, preceded(multispace0, single)),
+                        comment_or_space0,
+                        preceded(colon, preceded(comment_or_space0, single)),
                     )),
                 )),
             ),
-            preceded(multispace0, right_paren),
+            preceded(comment_or_space0, right_paren),
         ),
         Metadata::from,
     )(input)
@@ -869,6 +1044,21 @@ pub fn metadata(input: &str) -> IResult<&str, Option<Metadata>> {
 #[cfg(test)]
 mod metadata_tests {
     use super::*;
+
+    #[test]
+    fn test_simple_metadata_with_comments() {
+        let input = "\
+(
+    // fuzzy
+    a // wuzzy
+    : // wuz
+    \"b\"
+// a bear
+\t)";
+        let result = metadata(input);
+        let expected = Some(Metadata::from(vec![meta!(a, "b")]));
+        assert_successful_parse!(result, expected);
+    }
 
     #[test]
     fn test_simple_metadata() {
@@ -928,15 +1118,66 @@ pub fn scalar(input: &str) -> IResult<&str, Scalar> {
 pub fn object(input: &str) -> IResult<&str, Object> {
     map(
         delimited(
-            terminated(left_brace, multispace0),
-            separated_nonempty_list(
-                delimited(multispace0, comma, multispace0),
-                separated_pair(ident, delimited(multispace0, colon, multispace0), value_),
+            terminated(left_brace, comment_or_space0),
+            separated_list(
+                delimited(comment_or_space0, comma, comment_or_space0),
+                separated_pair(
+                    ident,
+                    delimited(comment_or_space0, colon, comment_or_space0),
+                    value_,
+                ),
             ),
-            preceded(multispace0, right_brace),
+            preceded(comment_or_space0, right_brace),
         ),
         Object::from,
     )(input)
+}
+
+#[cfg(test)]
+mod object_tests {
+    use super::*;
+
+    #[test]
+    fn test_object() {
+        let input = r#"{a: ["b", 1.0, 2, [3]]}"#;
+        let result = object(input);
+        let expected = obj!({
+            a => ["b", 1.0, 2, [3]]
+        });
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_empty_object() {
+        let input = "{}";
+        let result = object(input);
+        let expected = obj!({});
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_object_with_comments() {
+        let input = r#"{
+        // baz
+
+            a //buzz
+                : // fizz
+                [// baz
+"b" // foo
+, // fizz
+         1.0, 2, [//foo
+             3//bar
+         ]
+                //baz
+                ]
+                // foo
+}"#;
+        let result = object(input);
+        let expected = obj!({
+            a => ["b", 1.0, 2, [3]]
+        });
+        assert_successful_parse!(result, expected);
+    }
 }
 
 /// `Single`s are `Scalar`s or `StringConstant`s.
@@ -950,10 +1191,42 @@ pub fn single(input: &str) -> IResult<&str, Single> {
 /// A value list is a comma-separated list of `Value`s.
 pub fn value_list(input: &str) -> IResult<&str, Vec<Value>> {
     delimited(
-        terminated(left_square_bracket, multispace0),
-        separated_list(delimited(multispace0, comma, multispace0), value_),
-        preceded(multispace0, right_square_bracket),
+        terminated(left_square_bracket, comment_or_space0),
+        separated_list(
+            delimited(comment_or_space0, comma, comment_or_space0),
+            value_,
+        ),
+        preceded(comment_or_space0, right_square_bracket),
     )(input)
+}
+
+#[cfg(test)]
+mod value_list_tests {
+    use super::*;
+
+    #[test]
+    fn test_value_list() {
+        let input = r#"["a",1, 2]"#;
+        let result = value_list(input);
+        assert_successful_parse!(result, vec![val!("a"), val!(1), val!(2)]);
+    }
+
+    #[test]
+    fn test_value_list_with_comments() {
+        let input = r#"[//thing
+    "a",1
+    // comment
+    ,
+           // a huge comment
+           // on
+           // mul-
+           // tiple lines, some space too!
+
+            2// fiz
+                ]"#;
+        let result = value_list(input);
+        assert_successful_parse!(result, vec![val!("a"), val!(1), val!(2)]);
+    }
 }
 
 /// `Value`s are `Single`s or `Object`s.
@@ -990,23 +1263,23 @@ mod value_tests {
     #[test]
     fn test_value_object() {
         let result = value_("{a: 1}");
-        assert_successful_parse!(result, val!({ "a" => 1 }));
+        assert_successful_parse!(result, val!({ a => 1 }));
 
         let result = value_("{b: 2.42}");
-        assert_successful_parse!(result, val!({ "b" => 2.42 }));
+        assert_successful_parse!(result, val!({ b => 2.42 }));
 
         let result = value_(r#"{c: ["a"]}"#);
-        assert_successful_parse!(result, val!({ "c" => ["a"] }));
+        assert_successful_parse!(result, val!({ c => ["a"] }));
 
         // What kind of person would put this in a flatbuffer schema?
         let result = value_(r#"{d: ["a", {b: [1, ["z"]]}]}"#);
         assert_successful_parse!(
             result,
             val!({
-                "d" => [
+                d => [
                     "a",
                     {
-                        "b" => [1, ["z"]]
+                        b => [1, ["z"]]
                     }
                 ]
             })
@@ -1027,11 +1300,11 @@ type ProductTypeTriple<'a> = (Ident<'a>, Option<Metadata<'a>>, Vec<Field<'a>>);
 /// Parse the body of a table or struct.
 pub fn product_type_body(input: &str) -> IResult<&str, ProductTypeTriple> {
     tuple((
-        delimited(multispace1, ident, multispace0),
-        terminated(metadata, multispace0),
+        delimited(comment_or_space1, ident, comment_or_space0),
+        terminated(metadata, comment_or_space0),
         delimited(
             left_brace,
-            many1(delimited(multispace0, field_decl, multispace0)),
+            many1(delimited(comment_or_space0, field_decl, comment_or_space0)),
             right_brace,
         ),
     ))(input)
@@ -1070,6 +1343,35 @@ pub fn table_decl(input: &str) -> IResult<&str, Table> {
 #[cfg(test)]
 mod table_tests {
     use super::*;
+
+    #[test]
+    fn test_table_with_comments() {
+        // but y tho?
+        let input = "\
+/// My awesome table!
+table HelloReply // baz
+// foo
+{ // buz
+  message: string; // fizz
+  // buzzz
+  // a
+foo :uint=3;//baz
+// fizzy
+  bar // fuzzy
+  :      [int8];
+}";
+        let result = table_decl(input);
+        let expected = table!(
+            HelloReply,
+            doc!("My awesome table!"),
+            [
+                field!(message, String),
+                field!(foo, UInt = 3),
+                field!(bar, [Int8])
+            ]
+        );
+        assert_successful_parse!(result, expected);
+    }
 
     #[test]
     fn test_table_multiple_fields() {
@@ -1160,10 +1462,10 @@ mod hex_integer_constant_tests {
     #[test]
     fn test_hex_integer_constant() {
         let result = hex_integer_constant("0x1234ABCDEFabcdef");
-        assert_successful_parse!(result, 0x1234ABCDEFabcdef);
+        assert_successful_parse!(result, 0x1234_ABCD_EFAB_CDEF);
 
         let result = hex_integer_constant("-0x1234ABCDEFabcdef");
-        assert_successful_parse!(result, -0x1234ABCDEFabcdef);
+        assert_successful_parse!(result, -0x1234_ABCD_EFAB_CDEF);
     }
 
     #[test]
@@ -1537,7 +1839,7 @@ pub fn file_extension_decl(input: &str) -> IResult<&str, FileExtension> {
             doc_comment,
             delimited(
                 tag("file_extension"),
-                delimited(multispace0, string_constant, multispace0),
+                delimited(comment_or_space0, string_constant, comment_or_space0),
                 semicolon,
             ),
         )),
@@ -1548,6 +1850,17 @@ pub fn file_extension_decl(input: &str) -> IResult<&str, FileExtension> {
 #[cfg(test)]
 mod file_extension_tests {
     use super::*;
+
+    #[test]
+    fn test_file_extension_decl_with_comments() {
+        let result = file_extension_decl(
+            "file_extension  //bar
+        // foo
+            \"foo\"//baz\n\t;",
+        );
+        let expected = FileExtension::builder().ext("foo").build();
+        assert_successful_parse!(result, expected);
+    }
 
     #[test]
     fn test_file_extension_decl() {
@@ -1585,13 +1898,13 @@ pub fn file_identifier_decl(input: &str) -> IResult<&str, FileIdentifier> {
             delimited(
                 tag("file_identifier"),
                 delimited(
-                    multispace0,
+                    comment_or_space0,
                     delimited(
                         double_quote,
                         tuple((anychar, anychar, anychar, anychar)),
                         double_quote,
                     ),
-                    multispace0,
+                    comment_or_space0,
                 ),
                 semicolon,
             ),
@@ -1608,6 +1921,16 @@ pub fn file_identifier_decl(input: &str) -> IResult<&str, FileIdentifier> {
 #[cfg(test)]
 mod file_identifier_tests {
     use super::*;
+
+    #[test]
+    fn test_file_identifier_decl_with_comments() {
+        let result = file_identifier_decl(
+            "file_identifier // baz
+            \t\t\"PAR3\"// buz!\n\t;",
+        );
+        let expected = FileIdentifier::builder().id(['P', 'A', 'R', '3']).build();
+        assert_successful_parse!(result, expected);
+    }
 
     #[test]
     fn test_file_identifier_decl() {
@@ -1638,27 +1961,19 @@ mod file_identifier_tests {
     }
 }
 
-// TODO: comments
-pub fn comment(input: &str) -> IResult<&str, &str> {
-    recognize(tuple((tag("//"), not(tag("/")), not_line_ending)))(input)
-}
-
+/// Parse one line of a documentation comment.
 pub fn raw_doc_comment(input: &str) -> IResult<&str, &str> {
     preceded(tag("///"), not_line_ending)(input)
 }
 
+/// Parse zero or more lines of documentation comments
 pub fn doc_comment_lines(input: &str) -> IResult<&str, Vec<&str>> {
     many0(map(terminated(raw_doc_comment, line_ending), str::trim))(input)
 }
 
+/// Wrap zero or more lines of documentation comments in an AST node.
 pub fn doc_comment(input: &str) -> IResult<&str, Comment> {
-    map(doc_comment_lines, |matches| {
-        Comment::from(if matches.is_empty() {
-            None
-        } else {
-            Some(matches.join("\n"))
-        })
-    })(input)
+    map(doc_comment_lines, Comment::from)(input)
 }
 
 #[cfg(test)]
@@ -1666,11 +1981,37 @@ mod comment_tests {
     use super::*;
 
     #[test]
+    fn test_empty_comment() {
+        let input = "//\n";
+        let result = comment(input);
+        assert_successful_parse!(result, "\n", ());
+
+        let input = "//\r\n";
+        let result = comment(input);
+        assert_successful_parse!(result, "\r\n", ());
+    }
+
+    #[test]
     fn test_comment() {
         let input = "// a b c \n";
         let result = comment(input);
-        let expected = "// a b c ";
+        assert_successful_parse!(result, "\n", ());
+    }
+
+    #[test]
+    fn test_empty_raw_doc_comment() {
+        let input = "///\n";
+        let result = raw_doc_comment(input);
+
+        // we eat the triple forward slash (as opposed to discarding them later like we do with
+        // non-doc comments) since we need to keep track of the text but not the slashes
+        let expected = "";
         assert_successful_parse!(result, "\n", expected);
+
+        let input = "///\r\n";
+        let result = raw_doc_comment(input);
+        let expected = "";
+        assert_successful_parse!(result, "\r\n", expected);
     }
 
     #[test]
@@ -1684,7 +2025,7 @@ mod comment_tests {
     #[test]
     fn test_doc_comment() {
         let input = "/// My awesome table!\n";
-        let expected = Comment::from(Some("My awesome table!".into()));
+        let expected = Comment::from(vec!["My awesome table!"]);
         let result = doc_comment(input);
         assert_successful_parse!(result, expected);
     }
@@ -1692,12 +2033,12 @@ mod comment_tests {
     #[test]
     fn test_doc_comment_multi_line() {
         let input = "/// My awesome table!\n/// Another comment w00t?\n";
-        let expected = Comment::from(Some("My awesome table!\nAnother comment w00t?".into()));
+        let expected = Comment::from(vec!["My awesome table!", "Another comment w00t?"]);
         let result = doc_comment(input);
         assert_successful_parse!(result, expected);
 
         let input = "/// My awesome table!\na";
-        let expected = Comment::from(Some("My awesome table!".into()));
+        let expected = Comment::from(vec!["My awesome table!"]);
         let result = doc_comment(input);
         assert_successful_parse!(result, "a", expected);
     }

@@ -47,18 +47,23 @@ macro_rules! namespace {
 }
 
 #[macro_export]
+macro_rules! object {
+    ({ $($key:ident => $value:tt),* }) => {
+        $crate::types::Object::from(
+            vec![ $(($crate::types::Ident::from(stringify!($key)), $crate::value!($value))),* ]
+        )
+    };
+}
+
+#[macro_export]
 macro_rules! value {
     ([ $($element:tt),* ]) => {
         $crate::types::Value::from(vec![ $($crate::value!($element)),* ])
     };
-    ({ $($key:expr => $value:tt),* }) => {
-        {
-            $crate::types::Value::from(
-                $crate::types::Object::from(
-                    vec![ $(($crate::types::Ident::from($key), $crate::value!($value))),* ]
-                )
-            )
-        }
+    ({ $($key:ident => $value:tt),* }) => {
+        $crate::types::Value::from(
+            $crate::object!({ $($key => $value),* })
+        )
     };
     ($value:tt) => {
         $crate::types::Value::from($crate::types::Single::from($value))
@@ -95,7 +100,7 @@ fn test_value_macro_list() {
 fn test_value_macro_obj() {
     use crate::types::*;
 
-    let result = value!({ "a" => 1, "b" => "c" });
+    let result = value!({ a => 1, b => "c" });
     let expected = Value::from(vec![
         (
             Ident::from("a"),
@@ -147,17 +152,17 @@ macro_rules! table {
             .fields(vec![ $($field),* ]).build()
     };
     ($name:ident, [ $($field:expr),* ]) => {
-        $crate::table!($name, None, [ $($field),* ])
+        $crate::table!($name, vec![], [ $($field),* ])
     };
 }
 
 #[macro_export]
 macro_rules! comment {
     () => {
-        $crate::types::Comment::from(None)
+        $crate::types::Comment::from(vec![])
     };
     ($text:expr) => {
-        $crate::types::Comment::from(Some($text.into()))
+        $crate::types::Comment::from($text.split_terminator("\n").collect::<Vec<_>>())
     };
 }
 
@@ -195,6 +200,12 @@ macro_rules! method {
 
 #[macro_export]
 macro_rules! rpc {
+    ($name:ident, $doc:expr, [ $($methods:expr),+ ]) => {
+        $crate::types::Rpc::builder()
+            .id($crate::types::Ident::from(stringify!($name)))
+            .doc($doc)
+            .methods(vec![ $($methods),+ ]).build()
+    };
     ($name:ident, [ $($methods:expr),+ ]) => {
         $crate::types::Rpc::builder()
             .id($crate::types::Ident::from(stringify!($name)))

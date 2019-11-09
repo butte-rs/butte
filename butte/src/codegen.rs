@@ -175,8 +175,8 @@ impl ToTokens for Table<'_> {
             if let Some(metadata) = metadata {
                 if metadata.values.contains_key(&Ident::from("nested_flatbuffer")) {
                     Some(quote! {
-                        pub fn #method_name(&self) -> Option<Self<'a>> {
-                            self.#field_id.map(|data| <flatbuffers::ForwardsUOffset<Self<'a>>>::follow(data, 0))
+                        pub fn #method_name(&self) -> Option<Self> {
+                            self.#field_id.map(|data| <flatbuffers::ForwardsUOffset<Self>>::follow(data, 0))
                         }
                     })
                 } else {
@@ -398,21 +398,14 @@ impl ToTokens for RpcMethod<'_> {
     }
 }
 
-impl ToTokens for Comment {
+impl ToTokens for Comment<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let doc = if let Self {
-            text: Some(comment),
-        } = self
-        {
-            // I deliberatly chose not to fold over a Vec<Comment> to avoid
-            // code complexity. The tradeoff is that the generated code has
-            // newlines embedded in docstrings :(
+        let doc = self.lines.iter().rev().fold(quote!(), |docs, line| {
             quote! {
-                #[doc = #comment]
+                #[doc = #line]
+                #docs
             }
-        } else {
-            quote!()
-        };
+        });
         doc.to_tokens(tokens)
     }
 }
@@ -600,7 +593,7 @@ impl ToTokens for Schema<'_> {
         });
 
         let (namespace_parts, doc): (Vec<_>, _) = match namespaces.len() {
-            0 => (vec![], Comment { text: None }),
+            0 => (vec![], Comment::default()),
             1 => match &namespaces[0] {
                 Element::Namespace(Namespace { parts, doc }) => (parts.to_vec(), doc.clone()),
                 _ => unreachable!(),
