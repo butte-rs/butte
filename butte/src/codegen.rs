@@ -5,6 +5,7 @@ use crate::{field, table};
 
 use flatbuffers::VOffsetT;
 use heck::{ShoutySnakeCase, SnakeCase};
+use itertools::Itertools;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
 use std::{
@@ -229,9 +230,10 @@ impl ToTokens for Table<'_> {
             let snake_name = field.id.as_ref().to_snake_case();
             let offset_name = offset_id(field);
             quote! {
-                self.fbb.required(o, <#struct_id>::#offset_name, #snake_name);
+                self.fbb.required(o, #struct_id::#offset_name, #snake_name);
             }
         });
+
         (quote! {
             pub enum #struct_offset_enum_name {}
 
@@ -252,7 +254,7 @@ impl ToTokens for Table<'_> {
                     fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr>,
                     args: &'args #args<'args>
                 ) -> flatbuffers::WIPOffset<#struct_id<'bldr>> {
-                    let mut builder = <#builder_type>::new(fbb);
+                    let mut builder = #builder_type::new(fbb);
                     #(#builder_add_calls)*
                     builder.finish()
                 }
@@ -371,7 +373,7 @@ mod type_tests {
         let expected = "Vec < String >";
         assert_eq!(result, expected);
 
-        let result = to_code(Type::Ident(Ident::from("MyType")));
+        let result = to_code(Type::Ident(DottedIdent::from("MyType")));
         let expected = "MyType";
         assert_eq!(result, expected);
     }
@@ -407,6 +409,27 @@ impl ToTokens for Comment<'_> {
             }
         });
         doc.to_tokens(tokens)
+    }
+}
+
+impl ToTokens for DottedIdent<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let parts = &self.parts;
+        debug_assert!(!self.parts.is_empty());
+        let code = parts.iter().map(|e| e.raw).join("::");
+        let num_parts = parts.len();
+        let path_string = if num_parts > 1 {
+            format!(
+                "{}::{}",
+                std::iter::repeat("super").take(num_parts - 1).join("::"),
+                code
+            )
+        } else {
+            code
+        };
+        syn::parse_str::<syn::Path>(&path_string)
+            .expect("Cannot parse path")
+            .to_tokens(tokens)
     }
 }
 
@@ -571,7 +594,7 @@ impl ToTokens for Include<'_> {
         let id = format_ident!("{}", stem);
         (quote! {
             #doc
-            use #id;
+            use #id::*;
         })
         .to_tokens(tokens)
     }
@@ -586,50 +609,61 @@ impl ToTokens for Schema<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self { includes, elements } = self;
 
-        // split the code into 0 or 1 namespace declarations and a body
-        let (namespaces, body): (Vec<_>, Vec<_>) = elements.iter().partition(|e| match e {
-            Element::Namespace(_) => true,
-            _ => false,
-        });
-
-        let (namespace_parts, doc): (Vec<_>, _) = match namespaces.len() {
-            0 => (vec![], Comment::default()),
-            1 => match &namespaces[0] {
-                Element::Namespace(Namespace { parts, doc }) => (parts.to_vec(), doc.clone()),
-                _ => unreachable!(),
-            },
-            _ => panic!("more than one namespace declaration found"),
-        };
-
-        // reverse fold over the namespace pieces to generate nested modules:
-        // if namespace parts is [a, b, c]
-        // and body is struct Foo { ... }
-        // then
-        // reverse:
-        //   [c, b, a]
-        // fold:
-        //    init: struct Foo { ... }
-        //    next: pub mod c { struct Foo { ... } }
-        //    next: pub mod b { pub mod c { struct Foo { ... } } }
-        //   final: pub mod a { pub mod b { pub mod c { struct Foo { ... } } } }
-        let schema_body =
-            namespace_parts
-                .iter()
-                .rev()
-                .fold(quote! { #(#body)* }, |module_body, module_name| {
-                    let name = format_ident!("{}", module_name.raw.to_snake_case());
+        // namespaces precede all of their contents, so track the current namespace and accumulate
+        // its change into the key of a map of namespace -> elements contained within that
+        // namespace.
+        let code = elements
+            .iter()
+            .scan((None, None), |ns_item_pair, element| {
+                *ns_item_pair = if element.is_namespace() {
+                    (element.namespace(), None)
+                } else {
+                    (ns_item_pair.0, Some(element))
+                };
+                Some(*ns_item_pair)
+            })
+            .filter(|(_, element)| element.is_some())
+            .into_group_map()
+            .into_iter()
+            // for each non-None namespace and elements contained within:
+            // reverse fold over the namespace pieces to generate nested modules:
+            // if namespace parts is [a, b, c]
+            // and body is struct Foo { ... }
+            // then
+            // reverse:
+            //   [c, b, a]
+            // fold:
+            //    init: struct Foo { ... }
+            //    next: pub mod c { struct Foo { ... } }
+            //    next: pub mod b { pub mod c { struct Foo { ... } } }
+            //   final: pub mod a { pub mod b { pub mod c { struct Foo { ... } } } }
+            .map(|(namespace, elements)| {
+                let base_body = quote! { #(#elements)* };
+                if let Some(Namespace { ident, doc }) = namespace {
+                    let nested =
+                        ident
+                            .parts
+                            .iter()
+                            .rev()
+                            .fold(base_body, |module_body, module_name| {
+                                quote! {
+                                    pub mod #module_name {
+                                        #module_body
+                                    }
+                                }
+                            });
                     quote! {
-                        pub mod #name {
-                            #module_body
-                        }
+                        #doc
+                        #nested
                     }
-                });
+                } else {
+                    base_body
+                }
+            });
 
-        // finally, glom everything together
         (quote! {
             #(#includes)*
-            #doc // this is only filled if the namespace has a doc comment
-            #schema_body
+            #(#code)*
         })
         .to_tokens(tokens)
     }

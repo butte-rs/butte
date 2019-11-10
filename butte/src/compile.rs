@@ -30,6 +30,8 @@ pub fn compile_fbs_generic(
             .stdout(Stdio::piped())
             .arg("--edition")
             .arg("2018")
+            .arg("--config")
+            .arg("normalize_doc_attributes=true")
             .spawn()?;
         cmd.stdin
             .as_mut()
@@ -53,8 +55,9 @@ pub fn compile_fbs(path: impl AsRef<Path>) -> Result<()> {
             .file_name()
             .ok_or_else(|| anyhow!("path has no file_name: {:?}", path_ref))?,
     );
+    let ugly = false;
     compile_fbs_generic(
-        true,
+        ugly,
         Box::new(std::fs::File::open(path_ref)?),
         Box::new(std::fs::File::create(output_path)?),
     )?;

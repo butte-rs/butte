@@ -12,31 +12,34 @@ macro_rules! single_value {
     };
 }
 
-#[test]
-fn test_single_value() {
-    use crate::types::*;
+#[cfg(test)]
+mod single_value_tests {
+    #[test]
+    fn test_single_value() {
+        use crate::types::*;
 
-    let val = single_value!(1);
-    assert_eq!(val, Single::Scalar(Scalar::Integer(1)));
+        let val = single_value!(1);
+        assert_eq!(val, Single::Scalar(Scalar::Integer(1)));
 
-    let val = single_value!(1.0);
-    assert_eq!(val, Single::Scalar(Scalar::Float(1.0)));
+        let val = single_value!(1.0);
+        assert_eq!(val, Single::Scalar(Scalar::Float(1.0)));
 
-    let val = single_value!(true);
-    assert_eq!(val, Single::Scalar(Scalar::Boolean(true)));
+        let val = single_value!(true);
+        assert_eq!(val, Single::Scalar(Scalar::Boolean(true)));
 
-    let val = single_value!(false);
-    assert_eq!(val, Single::Scalar(Scalar::Boolean(false)));
+        let val = single_value!(false);
+        assert_eq!(val, Single::Scalar(Scalar::Boolean(false)));
 
-    let val = single_value!("a");
-    assert_eq!(val, Single::StringConstant("a"));
+        let val = single_value!("a");
+        assert_eq!(val, Single::StringConstant("a"));
+    }
 }
 
 #[macro_export]
 macro_rules! namespace {
-    ($path:path) => {
+    ($path:expr) => {
         $crate::types::Namespace::builder()
-            .parts(
+            .ident(
                 stringify!($path)
                     .split("::")
                     .map($crate::types::Ident::from)
@@ -70,45 +73,48 @@ macro_rules! value {
     };
 }
 
-#[test]
-fn test_value_macro_simple() {
-    use crate::types::*;
+#[cfg(test)]
+mod value_macro_tests {
+    #[test]
+    fn test_value_macro_simple() {
+        use crate::types::*;
 
-    let result = value!("a");
-    let expected = Value::Single(Single::StringConstant("a"));
-    assert_eq!(result, expected);
+        let result = value!("a");
+        let expected = Value::Single(Single::StringConstant("a"));
+        assert_eq!(result, expected);
 
-    let result = value!(1);
-    let expected = Value::Single(Single::Scalar(Scalar::Integer(1)));
-    assert_eq!(result, expected);
-}
+        let result = value!(1);
+        let expected = Value::Single(Single::Scalar(Scalar::Integer(1)));
+        assert_eq!(result, expected);
+    }
 
-#[test]
-fn test_value_macro_list() {
-    use crate::types::*;
+    #[test]
+    fn test_value_macro_list() {
+        use crate::types::*;
 
-    let result = value!(["a", "b", 1]);
-    let expected = Value::List(vec![
-        Value::from(Single::from("a")),
-        Value::from(Single::from("b")),
-        Value::from(Single::from(Scalar::from(1i64))),
-    ]);
-    assert_eq!(result, expected);
-}
+        let result = value!(["a", "b", 1]);
+        let expected = Value::List(vec![
+            Value::from(Single::from("a")),
+            Value::from(Single::from("b")),
+            Value::from(Single::from(Scalar::from(1i64))),
+        ]);
+        assert_eq!(result, expected);
+    }
 
-#[test]
-fn test_value_macro_obj() {
-    use crate::types::*;
+    #[test]
+    fn test_value_macro_obj() {
+        use crate::types::*;
 
-    let result = value!({ a => 1, b => "c" });
-    let expected = Value::from(vec![
-        (
-            Ident::from("a"),
-            Value::Single(Single::Scalar(Scalar::Integer(1))),
-        ),
-        (Ident::from("b"), Value::Single(Single::StringConstant("c"))),
-    ]);
-    assert_eq!(result, expected);
+        let result = value!({ a => 1, b => "c" });
+        let expected = Value::from(vec![
+            (
+                Ident::from("a"),
+                Value::Single(Single::Scalar(Scalar::Integer(1))),
+            ),
+            (Ident::from("b"), Value::Single(Single::StringConstant("c"))),
+        ]);
+        assert_eq!(result, expected);
+    }
 }
 
 #[macro_export]
@@ -139,6 +145,24 @@ macro_rules! field {
         $crate::types::Field::builder()
             .id($crate::types::Ident::from(stringify!($name)))
             .ty($crate::types::Type::$ty)
+            .build()
+    };
+    ($name:ident, [ $ty:path ]) => {
+        $crate::types::Field::builder()
+            .id($crate::types::Ident::from(stringify!($name)))
+            .ty($crate::types::Type::Array(Box::new(
+                $crate::types::Type::Ident($crate::types::DottedIdent::from(
+                    stringify!($ty).split("::").collect::<Vec<_>>(),
+                )),
+            )))
+            .build()
+    };
+    ($name:ident, $ty:path) => {
+        $crate::types::Field::builder()
+            .id($crate::types::Ident::from(stringify!($name)))
+            .ty($crate::types::Type::Ident(
+                $crate::types::DottedIdent::from(stringify!($ty).split("::").collect::<Vec<_>>()),
+            ))
             .build()
     };
 }
@@ -184,16 +208,16 @@ macro_rules! method {
     (fn $method_name:ident($req_ty:ident) -> $resp_ty:ident, [ $($meta:expr),* ]) => {
         $crate::types::RpcMethod::builder()
             .id($crate::types::Ident::from(stringify!($method_name)))
-            .request_type($crate::types::Ident::from(stringify!($req_ty)))
-            .response_type($crate::types::Ident::from(stringify!($resp_ty)))
+            .request_type($crate::types::DottedIdent::from(stringify!($req_ty)))
+            .response_type($crate::types::DottedIdent::from(stringify!($resp_ty)))
             .metadata(Some($crate::types::Metadata::from(vec![ $($meta),* ])))
             .build()
     };
     (fn $method_name:ident($req_ty:ident) -> $resp_ty:ident) => {
         $crate::types::RpcMethod::builder()
             .id($crate::types::Ident::from(stringify!($method_name)))
-            .request_type($crate::types::Ident::from(stringify!($req_ty)))
-            .response_type($crate::types::Ident::from(stringify!($resp_ty)))
+            .request_type($crate::types::DottedIdent::from(stringify!($req_ty).split("::").collect::<Vec<_>>()))
+            .response_type($crate::types::DottedIdent::from(stringify!($resp_ty)))
             .build()
     };
 }

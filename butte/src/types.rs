@@ -41,6 +41,22 @@ pub enum Element<'a> {
     Object(Object<'a>),
 }
 
+impl Element<'_> {
+    pub fn is_namespace(&self) -> bool {
+        match self {
+            Element::Namespace(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn namespace(&self) -> Option<&Namespace> {
+        match self {
+            Element::Namespace(ns) => Some(ns),
+            _ => None,
+        }
+    }
+}
+
 /// The root type of the schema file; there can be only one
 #[derive(Debug, Clone, PartialEq, From, TypedBuilder)]
 pub struct Root<'a> {
@@ -69,9 +85,9 @@ pub struct FileIdentifier<'a> {
 }
 
 /// The namespace in which the schema body resides
-#[derive(Debug, Clone, PartialEq, Eq, From, TypedBuilder)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, From, TypedBuilder)]
 pub struct Namespace<'a> {
-    pub parts: Vec<Ident<'a>>,
+    pub ident: DottedIdent<'a>,
 
     #[builder(default)]
     pub doc: Comment<'a>,
@@ -169,8 +185,8 @@ pub struct Rpc<'a> {
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct RpcMethod<'a> {
     pub id: Ident<'a>,
-    pub request_type: Ident<'a>,
-    pub response_type: Ident<'a>,
+    pub request_type: DottedIdent<'a>,
+    pub response_type: DottedIdent<'a>,
 
     #[builder(default)]
     pub metadata: Option<Metadata<'a>>,
@@ -205,7 +221,7 @@ pub enum Type<'a> {
     Float64,
     String,
     Array(Box<Type<'a>>),
-    Ident(Ident<'a>),
+    Ident(DottedIdent<'a>),
 }
 
 impl Type<'_> {
@@ -331,6 +347,23 @@ pub struct Ident<'a> {
 impl AsRef<str> for Ident<'_> {
     fn as_ref(&self) -> &str {
         self.raw
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
+pub struct DottedIdent<'a> {
+    pub parts: Vec<Ident<'a>>,
+}
+
+impl<'a> From<&'a str> for DottedIdent<'a> {
+    fn from(name: &'a str) -> Self {
+        Self::from(vec![name])
+    }
+}
+
+impl<'a> From<Vec<&'a str>> for DottedIdent<'a> {
+    fn from(names: Vec<&'a str>) -> Self {
+        Self::from(names.into_iter().map(Ident::from).collect::<Vec<_>>())
     }
 }
 
