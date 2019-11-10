@@ -208,8 +208,8 @@ macro_rules! method {
     (fn $method_name:ident($req_ty:ident) -> $resp_ty:ident, [ $($meta:expr),* ]) => {
         $crate::types::RpcMethod::builder()
             .id($crate::types::Ident::from(stringify!($method_name)))
-            .request_type($crate::types::DottedIdent::from(stringify!($req_ty)))
-            .response_type($crate::types::DottedIdent::from(stringify!($resp_ty)))
+            .request_type($crate::types::DottedIdent::from(stringify!($req_ty).split("::").collect::<Vec<_>>()))
+            .response_type($crate::types::DottedIdent::from(stringify!($resp_ty).split("::").collect::<Vec<_>>()))
             .metadata(Some($crate::types::Metadata::from(vec![ $($meta),* ])))
             .build()
     };
@@ -217,7 +217,7 @@ macro_rules! method {
         $crate::types::RpcMethod::builder()
             .id($crate::types::Ident::from(stringify!($method_name)))
             .request_type($crate::types::DottedIdent::from(stringify!($req_ty).split("::").collect::<Vec<_>>()))
-            .response_type($crate::types::DottedIdent::from(stringify!($resp_ty)))
+            .response_type($crate::types::DottedIdent::from(stringify!($resp_ty).split("::").collect::<Vec<_>>()))
             .build()
     };
 }

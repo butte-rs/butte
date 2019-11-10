@@ -373,7 +373,7 @@ mod type_tests {
         let expected = "Vec < String >";
         assert_eq!(result, expected);
 
-        let result = to_code(Type::Ident(DottedIdent::from("MyType")));
+        let result = to_code(Type::Ident(DottedIdent::from(vec!["MyType"])));
         let expected = "MyType";
         assert_eq!(result, expected);
     }

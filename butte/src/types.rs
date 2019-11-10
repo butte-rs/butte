@@ -355,12 +355,6 @@ pub struct DottedIdent<'a> {
     pub parts: Vec<Ident<'a>>,
 }
 
-impl<'a> From<&'a str> for DottedIdent<'a> {
-    fn from(name: &'a str) -> Self {
-        Self::from(vec![name])
-    }
-}
-
 impl<'a> From<Vec<&'a str>> for DottedIdent<'a> {
     fn from(names: Vec<&'a str>) -> Self {
         Self::from(names.into_iter().map(Ident::from).collect::<Vec<_>>())
@@ -409,7 +403,7 @@ mod tests {
         assert!(Type::Float32.is_scalar());
         assert!(Type::UInt16.is_scalar());
         assert!(!Type::String.is_scalar());
-        assert!(!Type::Ident("foobar".into()).is_scalar());
+        assert!(!Type::Ident(vec!["foobar"].into()).is_scalar());
         assert!(!Type::Array(Box::new(Type::Byte)).is_scalar());
     }
 
