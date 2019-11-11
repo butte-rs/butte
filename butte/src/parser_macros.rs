@@ -37,7 +37,7 @@ mod single_value_tests {
 
 #[macro_export]
 macro_rules! namespace {
-    ($path:expr) => {
+    ($path:path) => {
         $crate::types::Namespace::builder()
             .ident(
                 stringify!($path)
