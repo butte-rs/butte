@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
-use std::iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator};
-use std::marker::PhantomData;
-use std::mem::size_of;
-use std::slice::from_raw_parts;
-use std::str::from_utf8_unchecked;
+use std::{
+    iter::{DoubleEndedIterator, ExactSizeIterator, FusedIterator},
+    marker::PhantomData,
+    mem::size_of,
+    slice::from_raw_parts,
+    str::from_utf8_unchecked,
+};
 
 use endian_scalar::read_scalar_at;
 #[cfg(target_endian = "little")]

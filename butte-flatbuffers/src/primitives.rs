@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-use std::marker::PhantomData;
-use std::mem::size_of;
-use std::ops::Deref;
+use std::{marker::PhantomData, mem::size_of, ops::Deref};
 
 use endian_scalar::{emplace_scalar, read_scalar, read_scalar_at};
 use follow::Follow;

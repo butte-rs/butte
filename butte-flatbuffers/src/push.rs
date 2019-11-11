@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 
-use std::cmp::max;
-use std::mem::{align_of, size_of};
+use std::{
+    cmp::max,
+    mem::{align_of, size_of},
+};
 
 use endian_scalar::emplace_scalar;
 
