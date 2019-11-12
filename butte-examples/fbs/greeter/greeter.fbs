@@ -1,5 +1,7 @@
 /// A response from the server
 /// Useful for getting a greeting back!
+namespace foo.bar;
+
 table HelloReply {
   message: string;
 }
@@ -13,6 +15,7 @@ table ManyHellosRequest {
   num_greetings: int;
 }
 
+namespace baz.buzz;
 enum Foo : int32 {
   a,
   b,
@@ -22,6 +25,6 @@ enum Foo : int32 {
 /// A greeter service!
 /// ... with a multiline doc comment?!
 rpc_service Greeter {
-  SayHello(HelloRequest) : HelloReply;
-  SayManyHellos(ManyHellosRequest) : HelloReply (streaming: "server");
+  SayHello(foo.bar.HelloRequest) : foo.bar.HelloReply;
+  SayManyHellos(foo.bar.ManyHellosRequest) : foo.bar.HelloReply (streaming: "server");
 }

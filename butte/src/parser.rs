@@ -348,6 +348,8 @@ table ManyHellosRequest {
   num_greetings:int;
 }
 
+namespace foo.bar;
+
 rpc_service Greeter {
   SayHello(HelloRequest):HelloReply;
   SayManyHellos(ManyHellosRequest):HelloReply (streaming: "server");
@@ -365,6 +367,7 @@ rpc_service Greeter {
                 ManyHellosRequest,
                 [field!(name, String), field!(num_greetings, Int)]
             ),
+            namespace!(foo::bar),
             rpc!(
                 Greeter,
                 [
@@ -375,6 +378,49 @@ rpc_service Greeter {
                     )
                 ]
             )
+        };
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_schema_with_namespaces() {
+        let input = r#"
+namespace a.b;
+
+table A {
+  message: string;
+}
+
+namespace c;
+
+table C {
+  field1: a.b.A;
+}
+"#;
+        let result = schema_decl(input);
+        let expected = schema! {
+            namespace!(a::b),
+            table!(A, [field!(message, String)]),
+            namespace!(c),
+            table!(C, [field!(field1, a::b::A)])
+        };
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_schema_with_namespace() {
+        let input = r#"
+
+namespace baz;
+
+table Hello{
+  message:string;
+  count:uint64; } // bar
+"#;
+        let result = schema_decl(input);
+        let expected = schema! {
+            namespace!(baz),
+            table!(Hello, [field!(message, String), field!(count, UInt64)])
         };
         assert_successful_parse!(result, expected);
     }
@@ -463,24 +509,27 @@ mod include_tests {
     }
 }
 
+pub fn dotted_ident(input: &str) -> IResult<&str, DottedIdent> {
+    map(
+        separated_nonempty_list(
+            delimited(comment_or_space0, tag("."), comment_or_space0),
+            ident,
+        ),
+        DottedIdent::from,
+    )(input)
+}
+
 pub fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
     map(
         tuple((
             doc_comment,
             delimited(
                 tag("namespace"),
-                delimited(
-                    comment_or_space1,
-                    separated_nonempty_list(
-                        delimited(comment_or_space0, tag("."), comment_or_space0),
-                        ident,
-                    ),
-                    comment_or_space0,
-                ),
+                delimited(comment_or_space1, dotted_ident, comment_or_space0),
                 semicolon,
             ),
         )),
-        |(comment, parts)| Namespace::builder().doc(comment).parts(parts).build(),
+        |(comment, path)| Namespace::from((path, comment)),
     )(input)
 }
 
@@ -876,7 +925,7 @@ rpc_service Greeter {
         let result = rpc_decl(input);
         let expected = rpc!(
             Greeter,
-            doc!("A greeter service!"),
+            doc!(" A greeter service!"),
             [
                 method!(fn SayHello(HelloRequest) -> HelloReply),
                 method!(fn SayManyHellos(ManyHellosRequest) -> HelloReply, [
@@ -888,19 +937,31 @@ rpc_service Greeter {
     }
 }
 
+#[cfg(test)]
+mod dotted_ident_tests {
+    use super::*;
+
+    #[test]
+    fn test_simple_dotted_ident() {
+        let result = dotted_ident("a.b");
+        let expected = DottedIdent::from(vec![Ident::from("a"), Ident::from("b")]);
+        assert_successful_parse!(result, expected);
+    }
+}
+
 pub fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
     map(
         tuple((
             terminated(ident, comment_or_space0),
             delimited(
                 left_paren,
-                delimited(comment_or_space0, ident, comment_or_space0),
+                delimited(comment_or_space0, dotted_ident, comment_or_space0),
                 right_paren,
             ),
             preceded(
                 delimited(comment_or_space0, colon, comment_or_space0),
                 terminated(
-                    tuple((ident, preceded(comment_or_space0, metadata))),
+                    tuple((dotted_ident, preceded(comment_or_space0, metadata))),
                     terminated(comment_or_space0, semicolon),
                 ),
             ),
@@ -999,7 +1060,7 @@ pub fn ty(input: &str) -> IResult<&str, Type> {
             delimited(left_square_bracket, ty, right_square_bracket),
             |t| Type::from([t]),
         ),
-        map(ident, Type::Ident),
+        map(dotted_ident, Type::Ident),
     ))(input)
 }
 
@@ -1363,7 +1424,7 @@ foo :uint=3;//baz
         let result = table_decl(input);
         let expected = table!(
             HelloReply,
-            doc!("My awesome table!"),
+            doc!(" My awesome table!"),
             [
                 field!(message, String),
                 field!(foo, UInt = 3),
@@ -1387,7 +1448,7 @@ table HelloReply
         let result = table_decl(input);
         let expected = table!(
             HelloReply,
-            doc!("My awesome table!"),
+            doc!(" My awesome table!"),
             [
                 field!(message, String),
                 field!(foo, UInt = 3),
@@ -1968,7 +2029,7 @@ pub fn raw_doc_comment(input: &str) -> IResult<&str, &str> {
 
 /// Parse zero or more lines of documentation comments
 pub fn doc_comment_lines(input: &str) -> IResult<&str, Vec<&str>> {
-    many0(map(terminated(raw_doc_comment, line_ending), str::trim))(input)
+    many0(terminated(raw_doc_comment, line_ending))(input)
 }
 
 /// Wrap zero or more lines of documentation comments in an AST node.
@@ -2018,14 +2079,14 @@ mod comment_tests {
     fn test_doc_comment_lines() {
         let input = "/// A\n///   B\n/// C\n";
         let result = doc_comment_lines(input);
-        let expected = vec!["A", "B", "C"];
+        let expected = vec![" A", "   B", " C"];
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_doc_comment() {
         let input = "/// My awesome table!\n";
-        let expected = Comment::from(vec!["My awesome table!"]);
+        let expected = Comment::from(vec![" My awesome table!"]);
         let result = doc_comment(input);
         assert_successful_parse!(result, expected);
     }
@@ -2033,12 +2094,12 @@ mod comment_tests {
     #[test]
     fn test_doc_comment_multi_line() {
         let input = "/// My awesome table!\n/// Another comment w00t?\n";
-        let expected = Comment::from(vec!["My awesome table!", "Another comment w00t?"]);
+        let expected = Comment::from(vec![" My awesome table!", " Another comment w00t?"]);
         let result = doc_comment(input);
         assert_successful_parse!(result, expected);
 
         let input = "/// My awesome table!\na";
-        let expected = Comment::from(vec!["My awesome table!"]);
+        let expected = Comment::from(vec![" My awesome table!"]);
         let result = doc_comment(input);
         assert_successful_parse!(result, "a", expected);
     }
