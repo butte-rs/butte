@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-use follow::Follow;
-use primitives::*;
-use vtable::VTable;
+use crate::{follow::Follow, primitives::*, vtable::VTable};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Table<'a> {

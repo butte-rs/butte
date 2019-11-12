@@ -1,6 +1,7 @@
 [package]
 name = "butte-flatbuffers"
 version = "0.6.0"
+edition = "2018"
 authors = ["Robert Winslow <hello@rwinslow.com>", "FlatBuffers Maintainers", "Butte Maintainers"]
 license = "Apache-2.0"
 description = "Butte FlatBuffers Rust runtime library."

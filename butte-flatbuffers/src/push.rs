@@ -19,7 +19,7 @@ use std::{
     mem::{align_of, size_of},
 };
 
-use endian_scalar::emplace_scalar;
+use crate::endian_scalar::emplace_scalar;
 
 /// Trait to abstract over functionality needed to write values (either owned
 /// or referenced). Used in FlatBufferBuilder and implemented for generated

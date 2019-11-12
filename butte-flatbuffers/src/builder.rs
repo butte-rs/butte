@@ -18,13 +18,15 @@ extern crate smallvec;
 
 use std::{cmp::max, marker::PhantomData, ptr::write_bytes, slice::from_raw_parts};
 
-use endian_scalar::{emplace_scalar, read_scalar_at};
-use primitives::*;
-use push::{Push, PushAlignment};
-use table::Table;
-use vector::{SafeSliceAccess, Vector};
-use vtable::{field_index_to_field_offset, VTable};
-use vtable_writer::VTableWriter;
+use crate::{
+    endian_scalar::{emplace_scalar, read_scalar_at},
+    primitives::*,
+    push::{Push, PushAlignment},
+    table::Table,
+    vector::{SafeSliceAccess, Vector},
+    vtable::{field_index_to_field_offset, VTable},
+    vtable_writer::VTableWriter,
+};
 
 pub const N_SMALLVEC_STRING_VECTOR_CAPACITY: usize = 16;
 

@@ -16,9 +16,11 @@
 
 use std::{marker::PhantomData, mem::size_of, ops::Deref};
 
-use endian_scalar::{emplace_scalar, read_scalar, read_scalar_at};
-use follow::Follow;
-use push::Push;
+use crate::{
+    endian_scalar::{emplace_scalar, read_scalar, read_scalar_at},
+    follow::Follow,
+    push::Push,
+};
 
 pub const FLATBUFFERS_MAX_BUFFER_SIZE: usize = (1u64 << 31) as usize;
 
