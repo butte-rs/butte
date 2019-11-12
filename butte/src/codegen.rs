@@ -85,10 +85,18 @@ impl ToTokens for Scalar {
     }
 }
 
-/// Convert a `types::Type` to an argument type.
-fn to_arg_type(ty: &Type, lifetime: impl ToTokens) -> impl ToTokens {
+/// Convert a `types::Type` to a type with the supplied wrapper for reference types
+fn to_type(ty: &Type, lifetime: impl ToTokens, wrap_refs_types: impl ToTokens) -> impl ToTokens {
     match ty {
-        Type::String => quote!(flatbuffers::WIPOffset<&#lifetime str>),
+        Type::String => {
+            let wrap_tokens = wrap_refs_types.into_token_stream();
+            if wrap_tokens.is_empty() {
+                quote!(&#lifetime str)
+            } else {
+                quote!(#wrap_tokens::<&#lifetime str>)
+            }
+        }
+        // TODO other reference types?
         _ => quote!(#ty),
     }
 }
@@ -151,7 +159,7 @@ impl ToTokens for Table<'_> {
                  scalar,
                  ..
              }| {
-                let arg_ty = to_arg_type(ty, quote!('a));
+                let arg_ty = to_type(ty, quote!('a), quote!(flatbuffers::WIPOffset));
                 // Scalar fields can have a default value
                 let default = if let Some(default_value) = scalar {
                     quote!(#[default = #default_value])
@@ -198,7 +206,7 @@ impl ToTokens for Table<'_> {
             let add_method_name = format_ident!("add_{}", field_id.raw);
             let offset = offset_id(&field);
             let field_offset = quote!(#struct_id::#offset);
-            let arg_ty = to_arg_type(ty, quote!('_));
+            let arg_ty = to_type(ty, quote!('_), quote!(flatbuffers::WIPOffset));
             let body = if ty.is_scalar() {
                 if let Some(default_value) = scalar {
                     quote!(self.fbb.push_slot<#arg_ty>(#field_offset, #field_id, #default_value))
@@ -208,7 +216,7 @@ impl ToTokens for Table<'_> {
             } else {
                 quote!(self.fbb.push_slot_always::<#arg_ty>(#field_offset, #field_id))
             };
-            let arg_ty = to_arg_type(ty, quote!('b));
+            let arg_ty = to_type(ty, quote!('b), quote!(flatbuffers::WIPOffset));
             quote! {
                 #[inline]
                 fn #add_method_name(&mut self, #field_id: #arg_ty) {
@@ -224,6 +232,23 @@ impl ToTokens for Table<'_> {
                 pub const #offset_name: flatbuffers::VOffsetT = #offset_value;
             }
         });
+
+        let field_accessors = fields.iter().map(|field| {
+            let snake_name = format_ident!("{}", field.id.as_ref().to_snake_case());
+            let offset_name = offset_id(&field);
+            let ty = &field.ty;
+            let ty_simple_lifetime = to_type(ty, quote!('a), quote!());
+            let ty_wrapped = to_type(ty, quote!(), quote!(flatbuffers::ForwardsUOffset));
+
+            quote! {
+                #[inline]
+                pub fn #snake_name(&self) -> Option<#ty_simple_lifetime> {
+                    self.table
+                        .get::<#ty_wrapped>(#struct_id::#offset_name, None)
+                }
+            }
+        });
+
         let struct_offset_enum_name = format_ident!("{}Offset", struct_id.raw);
 
         let required_fields = fields.iter().map(|field| {
@@ -261,6 +286,9 @@ impl ToTokens for Table<'_> {
 
                 // field offset constants
                 #(#field_offset_constants)*
+
+                // fields access
+                #(#field_accessors)*
 
                 // nested flatbuffers if applicable
                 #(#field_nested_flatbuffers)*
