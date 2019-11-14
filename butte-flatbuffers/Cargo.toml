@@ -1,0 +1,13 @@
+[package]
+name = "butte-flatbuffers"
+version = "0.6.0"
+edition = "2018"
+authors = ["Robert Winslow <hello@rwinslow.com>", "FlatBuffers Maintainers", "Butte Maintainers"]
+license = "Apache-2.0"
+description = "Butte FlatBuffers Rust runtime library."
+repository = "https://github.com/butte/butte-rs"
+keywords = ["flatbuffers", "serialization", "zero-copy"]
+categories = ["encoding", "data-structures", "memory-management"]
+
+[dependencies]
+smallvec = "1.0.0"
