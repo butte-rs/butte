@@ -1,5 +1,5 @@
 //! Types representing the parts of a flatbuffer schema
-use derive_more::From;
+use derive_more::{AsRef, From};
 use std::{collections::HashMap, iter::FromIterator, path::Path};
 use typed_builder::TypedBuilder;
 
@@ -338,16 +338,9 @@ impl<'a> From<Vec<(Ident<'a>, Value<'a>)>> for Value<'a> {
 }
 
 /// An identifier
-#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
+#[derive(Debug, Copy, Clone, PartialEq, Hash, Eq, From, AsRef, TypedBuilder)]
 pub struct Ident<'a> {
     pub raw: &'a str,
-}
-
-// TODO: Use derive_more::AsRef when 0.15.1 is released
-impl AsRef<str> for Ident<'_> {
-    fn as_ref(&self) -> &str {
-        self.raw
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
@@ -395,7 +388,7 @@ pub struct File<'a> {
 }
 
 #[cfg(test)]
-mod tests {
+mod type_tests {
     use super::*;
 
     #[test]
@@ -406,6 +399,11 @@ mod tests {
         assert!(!Type::Ident(vec!["foobar"].into()).is_scalar());
         assert!(!Type::Array(Box::new(Type::Byte)).is_scalar());
     }
+}
+
+#[cfg(test)]
+mod enum_val_tests {
+    use super::*;
 
     #[test]
     fn test_enum_val_from_ident() {

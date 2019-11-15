@@ -13,9 +13,14 @@ name = "greeter"
 path = "src/greeter/greeter.rs"
 
 [dependencies]
-flatbuffers = "0.6.0"
+anyhow = "1.0.19"
 butte = { path = "../butte" }
+flatbuffers = { package = "butte-flatbuffers", path = "../butte-flatbuffers" }
 
 [build-dependencies]
 anyhow = "1.0.19"
 butte = { path = "../butte" }
+
+[dev-dependencies]
+anyhow = "1.0.19"
+assert_cmd = "0.11.1"

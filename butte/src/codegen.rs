@@ -8,11 +8,7 @@ use heck::{ShoutySnakeCase, SnakeCase};
 use itertools::Itertools;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
-use std::{
-    convert::TryInto,
-    fmt::{Debug, Display},
-    ops::Add,
-};
+use std::{convert::TryInto, fmt::Display};
 use syn::spanned::Spanned;
 
 #[cfg(test)]
@@ -98,35 +94,6 @@ fn to_type(ty: &Type, lifetime: impl ToTokens, wrap_refs_types: impl ToTokens) -
         }
         // TODO other reference types?
         _ => quote!(#ty),
-    }
-}
-
-/// The base offset for flatbuffers fields
-const FIXED_FIELDS: VOffsetT = 2; // Vtable size and Object Size.
-
-/// The size in bytes of the offset type
-const SIZE_OF_OFFSET_TYPE: VOffsetT = std::mem::size_of::<VOffsetT>() as VOffsetT;
-
-/// Convert a Field ID to a virtual table offset. Ported from the flatc C++ code.
-fn field_index_to_offset<I>(field_index: I) -> VOffsetT
-where
-    I: Add + TryInto<VOffsetT>,
-    I::Error: Debug,
-{
-    let field_index_value: VOffsetT = field_index
-        .try_into()
-        .expect("cannot convert field index value to VOffsetT");
-    (field_index_value + FIXED_FIELDS) * SIZE_OF_OFFSET_TYPE
-}
-
-#[cfg(test)]
-mod field_index_to_offset_tests {
-    use super::*;
-
-    #[test]
-    fn test_field_index_value() {
-        assert_eq!(field_index_to_offset(0), 4);
-        assert_eq!(field_index_to_offset(1), 6);
     }
 }
 
@@ -227,7 +194,7 @@ impl ToTokens for Table<'_> {
 
         let field_offset_constants = fields.iter().enumerate().map(|(index, field)| {
             let offset_name = offset_id(&field);
-            let offset_value = field_index_to_offset(index);
+            let offset_value = flatbuffers::field_index_to_field_offset(index as VOffsetT);
             quote! {
                 pub const #offset_name: flatbuffers::VOffsetT = #offset_value;
             }
