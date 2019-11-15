@@ -1,6 +1,6 @@
 use anyhow::Result;
-use assert_cmd::prelude::*; // Add methods on commands
-use std::process::Command; // Run programs // Used for writing assertions
+use assert_cmd::prelude::*;
+use std::process::Command;
 
 #[test]
 fn test_greeter() -> Result<()> {
