@@ -3,7 +3,7 @@ use crate::types::*;
 #[cfg(test)]
 use crate::{field, table};
 
-use flatbuffers::VOffsetT;
+use butte::VOffsetT;
 use heck::{ShoutySnakeCase, SnakeCase};
 use itertools::Itertools;
 use proc_macro2::TokenStream;
@@ -126,7 +126,7 @@ impl ToTokens for Table<'_> {
                  scalar,
                  ..
              }| {
-                let arg_ty = to_type(ty, quote!('a), quote!(flatbuffers::WIPOffset));
+                let arg_ty = to_type(ty, quote!('a), quote!(butte::WIPOffset));
                 // Scalar fields can have a default value
                 let default = if let Some(default_value) = scalar {
                     quote!(#[default = #default_value])
@@ -152,7 +152,7 @@ impl ToTokens for Table<'_> {
                 if metadata.values.contains_key(&Ident::from("nested_flatbuffer")) {
                     Some(quote! {
                         pub fn #method_name(&self) -> Option<Self> {
-                            self.#field_id.map(|data| <flatbuffers::ForwardsUOffset<Self>>::follow(data, 0))
+                            self.#field_id.map(|data| <butte::ForwardsUOffset<Self>>::follow(data, 0))
                         }
                     })
                 } else {
@@ -173,7 +173,7 @@ impl ToTokens for Table<'_> {
             let add_method_name = format_ident!("add_{}", field_id.raw);
             let offset = offset_id(&field);
             let field_offset = quote!(#struct_id::#offset);
-            let arg_ty = to_type(ty, quote!('_), quote!(flatbuffers::WIPOffset));
+            let arg_ty = to_type(ty, quote!('_), quote!(butte::WIPOffset));
             let body = if ty.is_scalar() {
                 if let Some(default_value) = scalar {
                     quote!(self.fbb.push_slot<#arg_ty>(#field_offset, #field_id, #default_value))
@@ -183,7 +183,7 @@ impl ToTokens for Table<'_> {
             } else {
                 quote!(self.fbb.push_slot_always::<#arg_ty>(#field_offset, #field_id))
             };
-            let arg_ty = to_type(ty, quote!('b), quote!(flatbuffers::WIPOffset));
+            let arg_ty = to_type(ty, quote!('b), quote!(butte::WIPOffset));
             quote! {
                 #[inline]
                 fn #add_method_name(&mut self, #field_id: #arg_ty) {
@@ -194,9 +194,9 @@ impl ToTokens for Table<'_> {
 
         let field_offset_constants = fields.iter().enumerate().map(|(index, field)| {
             let offset_name = offset_id(&field);
-            let offset_value = flatbuffers::field_index_to_field_offset(index as VOffsetT);
+            let offset_value = butte::field_index_to_field_offset(index as VOffsetT);
             quote! {
-                pub const #offset_name: flatbuffers::VOffsetT = #offset_value;
+                pub const #offset_name: butte::VOffsetT = #offset_value;
             }
         });
 
@@ -205,7 +205,7 @@ impl ToTokens for Table<'_> {
             let offset_name = offset_id(&field);
             let ty = &field.ty;
             let ty_simple_lifetime = to_type(ty, quote!('a), quote!());
-            let ty_wrapped = to_type(ty, quote!(), quote!(flatbuffers::ForwardsUOffset));
+            let ty_wrapped = to_type(ty, quote!(), quote!(butte::ForwardsUOffset));
 
             quote! {
                 #[inline]
@@ -232,20 +232,20 @@ impl ToTokens for Table<'_> {
             #[derive(Copy, Clone, Debug, PartialEq)]
             #doc
             pub struct #struct_id<'a> {
-                table: flatbuffers::Table<'a>,
+                table: butte::Table<'a>,
             }
 
-            impl<'a> From<flatbuffers::Table<'a>> for #struct_id<'a> {
-                fn from(table: flatbuffers::Table<'a>) -> Self {
+            impl<'a> From<butte::Table<'a>> for #struct_id<'a> {
+                fn from(table: butte::Table<'a>) -> Self {
                     Self { table }
                 }
             }
 
             impl<'a> #struct_id<'a> {
                 pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr>(
-                    fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr>,
+                    fbb: &'mut_bldr mut butte::FlatBufferBuilder<'bldr>,
                     args: &'args #args<'args>
-                ) -> flatbuffers::WIPOffset<#struct_id<'bldr>> {
+                ) -> butte::WIPOffset<#struct_id<'bldr>> {
                     let mut builder = #builder_type::new(fbb);
                     #(#builder_add_calls)*
                     builder.finish()
@@ -261,12 +261,12 @@ impl ToTokens for Table<'_> {
                 #(#field_nested_flatbuffers)*
             }
 
-            impl<'a> flatbuffers::Follow<'a> for #struct_id<'a> {
+            impl<'a> butte::Follow<'a> for #struct_id<'a> {
                 type Inner = Self;
 
                 #[inline]
                 fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                    let table = flatbuffers::Table { buf, loc };
+                    let table = butte::Table { buf, loc };
                     Self { table }
                 }
             }
@@ -280,15 +280,15 @@ impl ToTokens for Table<'_> {
 
             //// builder
             pub struct #builder_type<'a, 'b> {
-                fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>,
-                start: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
+                fbb: &'b mut butte::FlatBufferBuilder<'a>,
+                start: butte::WIPOffset<butte::TableUnfinishedWIPOffset>,
             }
 
             impl<'a: 'b, 'b> #builder_type<'a, 'b> {
                 #(#builder_field_methods)*
 
                 #[inline]
-                pub fn new(fbb: &'b mut flatbuffers::FlatBufferBuilder<'a>) -> Self {
+                pub fn new(fbb: &'b mut butte::FlatBufferBuilder<'a>) -> Self {
                     let start = fbb.start_table();
                     #builder_type {
                         fbb, start
@@ -296,10 +296,10 @@ impl ToTokens for Table<'_> {
                 }
 
                 #[inline]
-                pub fn finish(self) -> flatbuffers::WIPOffset<#struct_id<'a>> {
+                pub fn finish(self) -> butte::WIPOffset<#struct_id<'a>> {
                     let o = self.fbb.end_table(self.start);
                     #(#required_fields)*
-                    flatbuffers::WIPOffset::new(o.value())
+                    butte::WIPOffset::new(o.value())
                 }
             }
         })
@@ -509,15 +509,15 @@ impl ToTokens for Enum<'_> {
                 #(#fields),*
             }
 
-            impl<'a> flatbuffers::Follow<'a> for #enum_id {
+            impl<'a> butte::Follow<'a> for #enum_id {
                 type Inner = Self;
 
                 fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                    flatbuffers::read_scalar_at::<Self>(buf, loc)
+                    butte::read_scalar_at::<Self>(buf, loc)
                 }
             }
 
-            impl flatbuffers::EndianScalar for #enum_id {
+            impl butte::EndianScalar for #enum_id {
                 #[inline]
                 fn to_little_endian(self) -> Self {
                     let n = #base_type::to_le(self as #base_type);
@@ -533,12 +533,12 @@ impl ToTokens for Enum<'_> {
                 }
             }
 
-            impl flatbuffers::Push for #enum_id {
+            impl butte::Push for #enum_id {
                 type Output = Self;
 
                 #[inline]
                 fn push(&self, dst: &mut [u8], _rest: &[u8]) {
-                    flatbuffers::emplace_scalar::<Self>(dst, *self);
+                    butte::emplace_scalar::<Self>(dst, *self);
                 }
             }
 

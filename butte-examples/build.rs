@@ -1,5 +1,5 @@
 use anyhow::Result;
 
 fn main() -> Result<()> {
-    butte::compile_fbs("fbs/greeter/greeter.fbs")
+    butte_build::compile_fbs("fbs/greeter/greeter.fbs")
 }
