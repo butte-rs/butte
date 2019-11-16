@@ -3,7 +3,7 @@ let
     builtins.fetchTarball https://github.com/mozilla/nixpkgs-mozilla/archive/master.tar.gz
   );
   nixpkgs = import <nixpkgs> { overlays = [ moz_overlay ]; };
-  beta = nixpkgs.rustChannelOf { channel = "beta"; };
+  stable = nixpkgs.rustChannelOf { channel = "stable"; };
   extensions = [
       "clippy-preview"
       "rls-preview"
@@ -12,9 +12,7 @@ let
       "rust-std"
       "rust-src"
   ];
-  rustbeta = (beta.rust.override {
-    extensions = extensions;
-  });
+  ruststable = stable.rust.override { extensions = extensions; };
 in
   with nixpkgs;
   mkShell {
@@ -28,7 +26,7 @@ in
       pkgconfig
       protobuf
       flatbuffers
-      rustbeta
+      ruststable
       zlib
       kcov
     ];
