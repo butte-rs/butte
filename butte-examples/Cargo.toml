@@ -14,12 +14,12 @@ path = "src/greeter/greeter.rs"
 
 [dependencies]
 anyhow = "1.0.19"
+butte-build = { path = "../butte-build" }
 butte = { path = "../butte" }
-flatbuffers = { package = "butte-flatbuffers", path = "../butte-flatbuffers" }
 
 [build-dependencies]
 anyhow = "1.0.19"
-butte = { path = "../butte" }
+butte-build = { path = "../butte-build" }
 
 [dev-dependencies]
 anyhow = "1.0.19"

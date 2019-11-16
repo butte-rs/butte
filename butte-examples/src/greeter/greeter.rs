@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
-use flatbuffers as fb;
+use butte as fb;
 
 pub mod greeter {
-    butte::include_fbs!("greeter");
+    butte_build::include_fbs!("greeter");
 }
 
 fn main() -> Result<()> {
