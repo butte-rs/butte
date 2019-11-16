@@ -31,7 +31,7 @@ mod single_value_tests {
         assert_eq!(val, Single::Scalar(Scalar::Boolean(false)));
 
         let val = single_value!("a");
-        assert_eq!(val, Single::StringConstant("a"));
+        assert_eq!(val, Single::String("a"));
     }
 }
 
@@ -39,12 +39,7 @@ mod single_value_tests {
 macro_rules! namespace {
     ($path:path) => {
         $crate::types::Namespace::builder()
-            .ident(
-                stringify!($path)
-                    .split("::")
-                    .map($crate::types::Ident::from)
-                    .collect::<Vec<_>>(),
-            )
+            .ident($crate::dotted_ident_from_path_string!($path))
             .build()
     };
 }
@@ -80,7 +75,7 @@ mod value_macro_tests {
         use crate::types::*;
 
         let result = value!("a");
-        let expected = Value::Single(Single::StringConstant("a"));
+        let expected = Value::Single(Single::String("a"));
         assert_eq!(result, expected);
 
         let result = value!(1);
@@ -96,7 +91,7 @@ mod value_macro_tests {
         let expected = Value::List(vec![
             Value::from(Single::from("a")),
             Value::from(Single::from("b")),
-            Value::from(Single::from(Scalar::from(1i64))),
+            Value::from(Single::from(Scalar::from(1))),
         ]);
         assert_eq!(result, expected);
     }
@@ -111,7 +106,7 @@ mod value_macro_tests {
                 Ident::from("a"),
                 Value::Single(Single::Scalar(Scalar::Integer(1))),
             ),
-            (Ident::from("b"), Value::Single(Single::StringConstant("c"))),
+            (Ident::from("b"), Value::Single(Single::String("c"))),
         ]);
         assert_eq!(result, expected);
     }
@@ -151,9 +146,7 @@ macro_rules! field {
         $crate::types::Field::builder()
             .id($crate::types::Ident::from(stringify!($name)))
             .ty($crate::types::Type::Array(Box::new(
-                $crate::types::Type::Ident($crate::types::DottedIdent::from(
-                    stringify!($ty).split("::").collect::<Vec<_>>(),
-                )),
+                $crate::types::Type::Ident($crate::dotted_ident_from_path_string!($ty)),
             )))
             .build()
     };
@@ -161,9 +154,21 @@ macro_rules! field {
         $crate::types::Field::builder()
             .id($crate::types::Ident::from(stringify!($name)))
             .ty($crate::types::Type::Ident(
-                $crate::types::DottedIdent::from(stringify!($ty).split("::").collect::<Vec<_>>()),
+                $crate::dotted_ident_from_path_string!($ty),
             ))
             .build()
+    };
+}
+
+#[macro_export]
+macro_rules! dotted_ident_from_path_string {
+    ($expr:expr) => {
+        $crate::types::DottedIdent::from(
+            stringify!($expr)
+                .split("::")
+                .map(Ident::from)
+                .collect::<Vec<_>>(),
+        )
     };
 }
 
@@ -208,16 +213,16 @@ macro_rules! method {
     (fn $method_name:ident($req_ty:ident) -> $resp_ty:ident, [ $($meta:expr),* ]) => {
         $crate::types::RpcMethod::builder()
             .id($crate::types::Ident::from(stringify!($method_name)))
-            .request_type($crate::types::DottedIdent::from(stringify!($req_ty).split("::").collect::<Vec<_>>()))
-            .response_type($crate::types::DottedIdent::from(stringify!($resp_ty).split("::").collect::<Vec<_>>()))
+            .request_type($crate::dotted_ident_from_path_string!($req_ty))
+            .response_type($crate::dotted_ident_from_path_string!($resp_ty))
             .metadata(Some($crate::types::Metadata::from(vec![ $($meta),* ])))
             .build()
     };
     (fn $method_name:ident($req_ty:ident) -> $resp_ty:ident) => {
         $crate::types::RpcMethod::builder()
             .id($crate::types::Ident::from(stringify!($method_name)))
-            .request_type($crate::types::DottedIdent::from(stringify!($req_ty).split("::").collect::<Vec<_>>()))
-            .response_type($crate::types::DottedIdent::from(stringify!($resp_ty).split("::").collect::<Vec<_>>()))
+            .request_type($crate::dotted_ident_from_path_string!($req_ty))
+            .response_type($crate::dotted_ident_from_path_string!($resp_ty))
             .build()
     };
 }

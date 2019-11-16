@@ -646,7 +646,7 @@ pub fn enum_decl(input: &str) -> IResult<&str, Enum> {
             tag("enum"),
             delimited(comment_or_space1, ident, comment_or_space0),
         ),
-        preceded(colon, preceded(comment_or_space0, ty)),
+        preceded(colon, preceded(comment_or_space0, type_)),
         metadata,
         enum_body,
     ));
@@ -771,7 +771,7 @@ pub fn field_decl(input: &str) -> IResult<&str, Field> {
             tuple((
                 doc_comment,
                 terminated(ident, tuple((comment_or_space0, colon, comment_or_space0))),
-                ty,
+                type_,
                 opt(preceded(
                     tuple((comment_or_space0, equals, comment_or_space0)),
                     terminated(scalar, comment_or_space0),
@@ -1030,7 +1030,7 @@ SayHello // foo
     }
 }
 
-pub fn ty(input: &str) -> IResult<&str, Type> {
+pub fn type_(input: &str) -> IResult<&str, Type> {
     alt((
         alt((
             value(Type::Bool, tag("bool")),
@@ -1057,7 +1057,7 @@ pub fn ty(input: &str) -> IResult<&str, Type> {
         )),
         value(Type::String, tag("string")),
         map(
-            delimited(left_square_bracket, ty, right_square_bracket),
+            delimited(left_square_bracket, type_, right_square_bracket),
             |t| Type::from([t]),
         ),
         map(dotted_ident, Type::Ident),

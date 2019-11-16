@@ -3,29 +3,32 @@ use derive_more::{AsRef, From};
 use std::{collections::HashMap, iter::FromIterator, path::Path};
 use typed_builder::TypedBuilder;
 
-/// A Flatbuffer schema
+/// A Flatbuffer schema.
 #[derive(Debug, Clone, PartialEq, From, TypedBuilder)]
 pub struct Schema<'a> {
-    /// Included flatbuffer files
+    /// A collection of included flatbuffer files.
     #[builder(default)]
     pub includes: Vec<Include<'a>>,
 
-    /// The body of the schema file
+    /// A collection of `Element`s that make up the body of the schema.
     #[builder(default)]
     pub elements: Vec<Element<'a>>,
 }
 
-/// A single include
+/// A single include.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, From, TypedBuilder)]
 pub struct Include<'a> {
+    /// The path to the included file.
     pub path: &'a Path,
+
+    /// The file stem of `path`.
     pub stem: &'a str,
 
     #[builder(default)]
     pub doc: Comment<'a>,
 }
 
-/// A single schema file element
+/// A single schema element.
 #[derive(Debug, Clone, PartialEq, From)]
 pub enum Element<'a> {
     Namespace(Namespace<'a>),
@@ -42,13 +45,12 @@ pub enum Element<'a> {
 }
 
 impl Element<'_> {
+    /// Check whether an element is a namespace.
     pub fn is_namespace(&self) -> bool {
-        match self {
-            Element::Namespace(_) => true,
-            _ => false,
-        }
+        self.namespace().is_some()
     }
 
+    /// Return the underlying `Namespace` object from the element if `self` is a `Namespace`.
     pub fn namespace(&self) -> Option<&Namespace> {
         match self {
             Element::Namespace(ns) => Some(ns),
@@ -57,7 +59,31 @@ impl Element<'_> {
     }
 }
 
-/// The root type of the schema file; there can be only one
+#[cfg(test)]
+mod element_impl_tests {
+    use super::*;
+    use crate::namespace;
+
+    #[test]
+    fn test_is_namespace_with_namespace() {
+        let ns = Element::from(namespace!(a::b::c));
+        assert!(ns.is_namespace());
+    }
+
+    #[test]
+    fn test_namespace_with_namespace() {
+        let ns = Element::from(namespace!(foo::bar));
+        assert_eq!(
+            ns.namespace(),
+            Some(&Namespace::from((
+                vec!["foo".into(), "bar".into()].into(),
+                Comment::builder().build(),
+            )))
+        );
+    }
+}
+
+/// The root type of the schema file.
 #[derive(Debug, Clone, PartialEq, From, TypedBuilder)]
 pub struct Root<'a> {
     pub typename: Ident<'a>,
@@ -66,7 +92,7 @@ pub struct Root<'a> {
     pub doc: Comment<'a>,
 }
 
-/// The extension to use when creating flatbuffers binary files
+/// The extension to use when creating flatbuffers binary files.
 #[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
 pub struct FileExtension<'a> {
     pub ext: &'a str,
@@ -75,7 +101,7 @@ pub struct FileExtension<'a> {
     pub doc: Comment<'a>,
 }
 
-/// A magic number for using flatbuffers as a file format
+/// A magic number for using flatbuffers as a file format.
 #[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
 pub struct FileIdentifier<'a> {
     pub id: [char; 4],
@@ -84,7 +110,7 @@ pub struct FileIdentifier<'a> {
     pub doc: Comment<'a>,
 }
 
-/// The namespace in which the schema body resides
+/// A namespace in which one or more schema elements resides.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, From, TypedBuilder)]
 pub struct Namespace<'a> {
     pub ident: DottedIdent<'a>,
@@ -93,7 +119,7 @@ pub struct Namespace<'a> {
     pub doc: Comment<'a>,
 }
 
-/// Declares an attribute to be used as metadata wherever metadata is valid
+/// Declares an attribute to be used as metadata wherever metadata is valid.
 #[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
 pub struct Attribute<'a> {
     pub attr: Ident<'a>,
@@ -102,11 +128,11 @@ pub struct Attribute<'a> {
     pub doc: Comment<'a>,
 }
 
-/// Struct type
+/// Struct type. Structs are product types where fields are always required.
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Struct<'a> {
     pub id: Ident<'a>,
-    pub fields: Vec<Field<'a>>, // one or more
+    pub fields: Vec<Field<'a>>,
 
     #[builder(default)]
     pub metadata: Option<Metadata<'a>>,
@@ -115,7 +141,7 @@ pub struct Struct<'a> {
     pub doc: Comment<'a>,
 }
 
-/// Table type
+/// Table type. Tables are product types where fields are optional unless indicated otherwise.
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Table<'a> {
     pub id: Ident<'a>,
@@ -128,7 +154,7 @@ pub struct Table<'a> {
     pub doc: Comment<'a>,
 }
 
-/// Type representing enums
+/// Enum type.
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Enum<'a> {
     pub id: Ident<'a>,
@@ -142,7 +168,7 @@ pub struct Enum<'a> {
     pub doc: Comment<'a>,
 }
 
-/// Type representing unions
+/// Union type.
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Union<'a> {
     pub id: Ident<'a>,
@@ -155,7 +181,7 @@ pub struct Union<'a> {
     pub doc: Comment<'a>,
 }
 
-/// A field of a struct or table
+/// A field of a `Struct` or `Table`.
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Field<'a> {
     pub id: Ident<'a>,
@@ -171,7 +197,7 @@ pub struct Field<'a> {
     pub doc: Comment<'a>,
 }
 
-/// An RPC service
+/// An RPC service.
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Rpc<'a> {
     pub id: Ident<'a>,
@@ -181,13 +207,19 @@ pub struct Rpc<'a> {
     pub doc: Comment<'a>,
 }
 
-/// A method in an RPC service
+/// A method in an RPC service.
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct RpcMethod<'a> {
+    /// The name of the method.
     pub id: Ident<'a>,
+
+    /// The request type of the method.
     pub request_type: DottedIdent<'a>,
+
+    /// The response type of the method.
     pub response_type: DottedIdent<'a>,
 
+    /// Method metadata.
     #[builder(default)]
     pub metadata: Option<Metadata<'a>>,
 
@@ -195,7 +227,7 @@ pub struct RpcMethod<'a> {
     pub doc: Comment<'a>,
 }
 
-/// Flatbuffer scalar, array types and user-defined types
+/// Scalar, array, and user-defined types.
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
 pub enum Type<'a> {
     Bool,
@@ -225,6 +257,7 @@ pub enum Type<'a> {
 }
 
 impl Type<'_> {
+    /// Check whether a `Type` is scalar.
     pub fn is_scalar(&self) -> bool {
         // If it's a string, array type, or type name (UDT) it's not a scalar.
         // Otherwise it is.
@@ -236,36 +269,33 @@ impl Type<'_> {
 }
 
 impl<'a> From<[Type<'a>; 1]> for Type<'a> {
+    /// Convert an array of size 1 to a `Type::Array`.
     fn from(array: [Type<'a>; 1]) -> Self {
-        Type::Array(Box::new(array[0].clone()))
+        Self::Array(Box::new(array[0].clone()))
     }
 }
 
-/// Integer constant type
+/// Integer constant type.
 pub type IntegerConstant = i64;
 
-/// Floating point constant type
+/// Floating point constant type.
 pub type FloatingConstant = f64;
 
-/// Boolean constant type
+/// Boolean constant type.
 pub type BooleanConstant = bool;
 
-/// Type for enum/union values
+/// Type for `Enum`/`Union` values.
 #[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
 pub struct EnumVal<'a> {
+    /// The name of the enum value.
     pub id: Ident<'a>,
 
+    /// An optional enum value.
     #[builder(default)]
     pub value: Option<IntegerConstant>,
 }
 
-impl<'a> From<Ident<'a>> for EnumVal<'a> {
-    fn from(id: Ident<'a>) -> Self {
-        Self::builder().id(id).build()
-    }
-}
-
-/// Key-value pair metadata
+/// Key-value pair metadata.
 #[derive(Debug, Clone, PartialEq, From, TypedBuilder)]
 pub struct Metadata<'a> {
     #[builder(default)]
@@ -273,12 +303,13 @@ pub struct Metadata<'a> {
 }
 
 impl<'a> From<Vec<(Ident<'a>, Option<Single<'a>>)>> for Metadata<'a> {
+    /// Convert a `Vec` of `Ident`/`Value` pairs to a `Value`.
     fn from(values: Vec<(Ident<'a>, Option<Single<'a>>)>) -> Self {
         Self::builder().values(HashMap::from_iter(values)).build()
     }
 }
 
-/// Integer, float, or boolean constants
+/// Integer, float, or boolean constants.
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, From)]
 pub enum Scalar {
     Integer(IntegerConstant),
@@ -286,7 +317,7 @@ pub enum Scalar {
     Boolean(BooleanConstant),
 }
 
-/// JSON blob-like
+/// JSON-like values.
 #[derive(Debug, Clone, PartialEq, From, TypedBuilder)]
 pub struct Object<'a> {
     #[builder(default)]
@@ -294,6 +325,7 @@ pub struct Object<'a> {
 }
 
 impl<'a> From<Vec<(Ident<'a>, Value<'a>)>> for Object<'a> {
+    /// Convert a `Vec` of `Ident`/`Value` pairs to a `Value`.
     fn from(values: Vec<(Ident<'a>, Value<'a>)>) -> Self {
         Self::builder().values(HashMap::from_iter(values)).build()
     }
@@ -303,26 +335,27 @@ impl<'a> From<Vec<(Ident<'a>, Value<'a>)>> for Object<'a> {
 #[derive(Debug, Clone, PartialEq, PartialOrd, From)]
 pub enum Single<'a> {
     Scalar(Scalar),
-    StringConstant(&'a str),
+    String(&'a str),
 }
 
 impl From<IntegerConstant> for Single<'_> {
     fn from(value: IntegerConstant) -> Self {
-        Self::from(Scalar::from(value))
+        Scalar::from(value).into()
     }
 }
 
 impl From<FloatingConstant> for Single<'_> {
     fn from(value: FloatingConstant) -> Self {
-        Self::from(Scalar::from(value))
+        Scalar::from(value).into()
     }
 }
 
 impl From<BooleanConstant> for Single<'_> {
     fn from(value: BooleanConstant) -> Self {
-        Self::from(Scalar::from(value))
+        Scalar::from(value).into()
     }
 }
+
 /// Strings, integers, bools, objects, and lists thereof.
 #[derive(Debug, Clone, PartialEq, From)]
 pub enum Value<'a> {
@@ -333,7 +366,7 @@ pub enum Value<'a> {
 
 impl<'a> From<Vec<(Ident<'a>, Value<'a>)>> for Value<'a> {
     fn from(values: Vec<(Ident<'a>, Value<'a>)>) -> Self {
-        Value::Object(Object::from(values))
+        Object::from(values).into()
     }
 }
 
@@ -343,46 +376,45 @@ pub struct Ident<'a> {
     pub raw: &'a str,
 }
 
+/// An identifier composed of `Ident`s separated by dots.
 #[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
 pub struct DottedIdent<'a> {
     pub parts: Vec<Ident<'a>>,
 }
 
-impl<'a> From<Vec<&'a str>> for DottedIdent<'a> {
-    fn from(names: Vec<&'a str>) -> Self {
-        Self::from(names.into_iter().map(Ident::from).collect::<Vec<_>>())
-    }
-}
-
-/// A documentation comment
+/// A documentation comment.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default, From, TypedBuilder)]
 pub struct Comment<'a> {
     #[builder(default)]
     pub lines: Vec<&'a str>,
 }
 
-/// The root type of the file, there can be only one. This is different from
-/// the Root type resulting from a parse. This type is an enum that contains
-/// the actual type object.
+/// The root type of the file. This type is different from the [`Root`](crate::types::Root) type resulting from a parse.
+/// This type is an enum that contains the actual type object.
 #[derive(Debug, Clone, PartialEq, From)]
 pub enum RootType<'a> {
     Table(Table<'a>),
     Struct(Struct<'a>),
 }
 
-/// A file
+/// A file containing a flatbuffer schema.
 #[derive(Debug, Clone, PartialEq, From, TypedBuilder)]
 pub struct File<'a> {
+    /// The flatbuffer schema.
     pub schema: Schema<'a>,
 
+    /// The path to the file.
     pub path: &'a Path,
 
+    /// A list of root types declared in the file.
     #[builder(default)]
-    pub root_type: Option<RootType<'a>>,
+    pub root_type: Vec<RootType<'a>>,
 
+    /// An optional file identifier. See [`FileIdentifier`](crate::types::Identifier).
     #[builder(default)]
     pub file_identifier: Option<FileIdentifier<'a>>,
 
+    /// An optional file extension. See [`FileExtension`](crate::types::FileExtension).
     #[builder(default)]
     pub file_extension: Option<FileExtension<'a>>,
 }
@@ -396,19 +428,7 @@ mod type_tests {
         assert!(Type::Float32.is_scalar());
         assert!(Type::UInt16.is_scalar());
         assert!(!Type::String.is_scalar());
-        assert!(!Type::Ident(vec!["foobar"].into()).is_scalar());
+        assert!(!Type::Ident(vec!["foobar".into()].into()).is_scalar());
         assert!(!Type::Array(Box::new(Type::Byte)).is_scalar());
-    }
-}
-
-#[cfg(test)]
-mod enum_val_tests {
-    use super::*;
-
-    #[test]
-    fn test_enum_val_from_ident() {
-        let result: EnumVal = Ident::from("foo").into();
-        let expected = EnumVal::builder().id(Ident::from("foo")).build();
-        assert_eq!(result, expected);
     }
 }
