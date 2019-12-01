@@ -12,24 +12,11 @@ let
       "rust-std"
       "rust-src"
   ];
-  ruststable = stable.rust.override { extensions = extensions; };
-in
-  with nixpkgs;
-  mkShell {
-    name = "rust";
-    buildInputs = [
-      autoconf
-      automake
-      cmake
-      libtool
-      openssl
-      pkgconfig
-      protobuf
-      flatbuffers
-      ruststable
-      zlib
-      kcov
-    ];
-
+  rust-stable = stable.rust.override { extensions = extensions; };
+in with nixpkgs; {
+  stable = mkShell {
+    name = "rust-stable";
+    buildInputs = [ rust-stable protobuf flatbuffers ];
     PROTOC = "${protobuf}/bin/protoc";
-  }
+  };
+}
