@@ -28,6 +28,10 @@ keywords = [
 ]
 categories = ["data-structures", "encoding", "parser-implementations"]
 
+[[bin]]
+name = "butte"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1.0.19"
 derive_more = { version = "0.99.0", features = ["from", "as_ref"] }
