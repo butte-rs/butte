@@ -23,4 +23,4 @@ butte-build = { path = "../butte-build" }
 
 [dev-dependencies]
 anyhow = "1.0.19"
-assert_cmd = "0.11.1"
+assert_cmd = "0.12.0"
