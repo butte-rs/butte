@@ -43,9 +43,9 @@ pub const SIZE_I64: usize = size_of::<i64>();
 pub const SIZE_F32: usize = size_of::<f32>();
 pub const SIZE_F64: usize = size_of::<f64>();
 
-pub const SIZE_SOFFSET: usize = SIZE_I32;
-pub const SIZE_UOFFSET: usize = SIZE_U32;
-pub const SIZE_VOFFSET: usize = SIZE_I16;
+pub const SIZE_SOFFSET: usize = size_of::<SOffsetT>();
+pub const SIZE_UOFFSET: usize = size_of::<UOffsetT>();
+pub const SIZE_VOFFSET: usize = size_of::<VOffsetT>();
 
 pub const SIZE_SIZEPREFIX: usize = SIZE_UOFFSET;
 
@@ -56,8 +56,8 @@ pub type SOffsetT = i32;
 /// and lengths of vectors.
 pub type UOffsetT = u32;
 
-/// VOffsetT is a i32 that is used by vtables to store field data.
-pub type VOffsetT = i16;
+/// VOffsetT is a u16 that is used by vtables to store field data.
+pub type VOffsetT = u16;
 
 /// TableFinishedWIPOffset marks a WIPOffset as being for a finished table.
 #[derive(Clone, Copy)]
