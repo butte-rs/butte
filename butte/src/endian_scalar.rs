@@ -1,5 +1,6 @@
 /*
  * Copyright 2018 Google Inc. All rights reserved.
+ * Copyright 2019 Butte authors. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +15,7 @@
  * limitations under the License.
  */
 
+use crate::Error;
 use std::mem::size_of;
 
 /// Trait for values that must be stored in little-endian byte order, but
@@ -161,19 +163,19 @@ pub fn emplace_scalar<T: EndianScalar>(s: &mut [u8], x: T) {
 /// Read an EndianScalar from the provided byte slice at the specified location.
 /// Performs endian conversion, if necessary.
 #[inline]
-pub fn read_scalar_at<T: EndianScalar>(s: &[u8], loc: usize) -> T {
-    let buf = &s[loc..loc + size_of::<T>()];
+pub fn read_scalar_at<T: EndianScalar>(s: &[u8], loc: usize) -> Result<T, Error> {
+    let buf = &s.get(loc..loc + size_of::<T>()).ok_or(Error::OutOfBounds)?;
     read_scalar(buf)
 }
 
 /// Read an EndianScalar from the provided byte slice. Performs endian
 /// conversion, if necessary.
 #[inline]
-pub fn read_scalar<T: EndianScalar>(s: &[u8]) -> T {
+pub fn read_scalar<T: EndianScalar>(s: &[u8]) -> Result<T, Error> {
     let sz = size_of::<T>();
 
-    let p = (&s[..sz]).as_ptr() as *const T;
+    let p = (&s.get(..sz).ok_or(Error::OutOfBounds)?).as_ptr() as *const T;
     let x = unsafe { *p };
 
-    x.from_little_endian()
+    Ok(x.from_little_endian())
 }

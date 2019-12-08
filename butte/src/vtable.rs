@@ -1,5 +1,6 @@
 /*
  * Copyright 2018 Google Inc. All rights reserved.
+ * Copyright 2019 Butte authors. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +15,7 @@
  * limitations under the License.
  */
 
-use crate::{endian_scalar::read_scalar_at, follow::Follow, primitives::*};
+use crate::{endian_scalar::read_scalar_at, follow::Follow, primitives::*, Error};
 
 /// VTable encapsulates read-only usage of a vtable. It is only to be used
 /// by generated code.
@@ -26,7 +27,7 @@ pub struct VTable<'a> {
 
 impl<'a> PartialEq for VTable<'a> {
     fn eq(&self, other: &VTable) -> bool {
-        self.as_bytes().eq(other.as_bytes())
+        self.as_bytes() == other.as_bytes()
     }
 }
 
@@ -34,36 +35,37 @@ impl<'a> VTable<'a> {
     pub fn init(buf: &'a [u8], loc: usize) -> Self {
         VTable { buf, loc }
     }
-    pub fn num_fields(&self) -> usize {
-        (self.num_bytes() / SIZE_VOFFSET) - 2
+    pub fn num_fields(&self) -> Result<usize, Error> {
+        Ok((self.num_bytes()? / SIZE_VOFFSET) - 2)
     }
-    pub fn num_bytes(&self) -> usize {
-        read_scalar_at::<VOffsetT>(self.buf, self.loc) as usize
+    pub fn num_bytes(&self) -> Result<usize, Error> {
+        Ok(read_scalar_at::<VOffsetT>(self.buf, self.loc)? as usize)
     }
-    pub fn object_inline_num_bytes(&self) -> usize {
-        let n = read_scalar_at::<VOffsetT>(self.buf, self.loc + SIZE_VOFFSET);
-        n as usize
+    pub fn object_inline_num_bytes(&self) -> Result<usize, Error> {
+        let n = read_scalar_at::<VOffsetT>(self.buf, self.loc + SIZE_VOFFSET)?;
+        Ok(n as usize)
     }
-    pub fn get_field(&self, idx: usize) -> VOffsetT {
-        // TODO(rw): distinguish between None and 0?
-        if idx > self.num_fields() {
-            return 0;
+    pub fn get_field(&self, idx: usize) -> Result<Option<VOffsetT>, Error> {
+        if idx > self.num_fields()? {
+            return Ok(None);
         }
         read_scalar_at::<VOffsetT>(
             self.buf,
             self.loc + SIZE_VOFFSET + SIZE_VOFFSET + SIZE_VOFFSET * idx,
         )
+        .map(Some)
     }
-    pub fn get(&self, byte_loc: VOffsetT) -> VOffsetT {
-        // TODO(rw): distinguish between None and 0?
-        if byte_loc as usize >= self.num_bytes() {
-            return 0;
+    pub fn get(&self, byte_loc: VOffsetT) -> Result<Option<VOffsetT>, Error> {
+        if byte_loc as usize >= self.num_bytes()? {
+            return Ok(None);
         }
-        read_scalar_at::<VOffsetT>(self.buf, self.loc + byte_loc as usize)
+        read_scalar_at::<VOffsetT>(self.buf, self.loc + byte_loc as usize).map(Some)
     }
-    pub fn as_bytes(&self) -> &[u8] {
-        let len = self.num_bytes();
-        &self.buf[self.loc..self.loc + len]
+    pub fn as_bytes(&self) -> Result<&[u8], Error> {
+        let len = self.num_bytes()?;
+        self.buf
+            .get(self.loc..self.loc + len)
+            .ok_or(Error::OutOfBounds)
     }
 }
 
@@ -83,7 +85,7 @@ pub fn field_offset_to_field_index(field_o: VOffsetT) -> VOffsetT {
 
 impl<'a> Follow<'a> for VTable<'a> {
     type Inner = VTable<'a>;
-    fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-        VTable::init(buf, loc)
+    fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
+        Ok(VTable::init(buf, loc))
     }
 }

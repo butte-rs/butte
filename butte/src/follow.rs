@@ -1,5 +1,6 @@
 /*
  * Copyright 2018 Google Inc. All rights reserved.
+ * Copyright 2019 Butte authors. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +15,7 @@
  * limitations under the License.
  */
 
+use crate::Error;
 use std::marker::PhantomData;
 
 /// Follow is a trait that allows us to access FlatBuffers in a declarative,
@@ -29,13 +31,13 @@ use std::marker::PhantomData;
 /// continue traversing the FlatBuffer.
 pub trait Follow<'a> {
     type Inner;
-    fn follow(buf: &'a [u8], loc: usize) -> Self::Inner;
+    fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error>;
 }
 
 /// Execute a follow as a top-level function.
 #[allow(dead_code)]
 #[inline]
-pub fn lifted_follow<'a, T: Follow<'a>>(buf: &'a [u8], loc: usize) -> T::Inner {
+pub fn lifted_follow<'a, T: Follow<'a>>(buf: &'a [u8], loc: usize) -> Result<T::Inner, Error> {
     T::follow(buf, loc)
 }
 
@@ -49,14 +51,14 @@ impl<'a, T: Follow<'a> + 'a> FollowStart<T> {
         Self { 0: PhantomData }
     }
     #[inline]
-    pub fn self_follow(&'a self, buf: &'a [u8], loc: usize) -> T::Inner {
+    pub fn self_follow(&'a self, buf: &'a [u8], loc: usize) -> Result<T::Inner, Error> {
         T::follow(buf, loc)
     }
 }
 impl<'a, T: Follow<'a>> Follow<'a> for FollowStart<T> {
     type Inner = T::Inner;
     #[inline]
-    fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
         T::follow(buf, loc)
     }
 }

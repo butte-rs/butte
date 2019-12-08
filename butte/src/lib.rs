@@ -1,5 +1,6 @@
 /*
  * Copyright 2018 Google Inc. All rights reserved.
+ * Copyright 2019 Butte authors. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +31,7 @@
 
 mod builder;
 mod endian_scalar;
+mod error;
 mod follow;
 mod primitives;
 mod push;
@@ -43,6 +45,7 @@ pub use crate::{
     endian_scalar::{
         byte_swap_f32, byte_swap_f64, emplace_scalar, read_scalar, read_scalar_at, EndianScalar,
     },
+    error::Error,
     follow::{Follow, FollowStart},
     primitives::*,
     push::Push,

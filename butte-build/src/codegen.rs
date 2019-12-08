@@ -209,9 +209,9 @@ impl ToTokens for Table<'_> {
 
             quote! {
                 #[inline]
-                pub fn #snake_name(&self) -> Option<#ty_simple_lifetime> {
+                pub fn #snake_name(&self) -> Result<Option<#ty_simple_lifetime>, butte::Error> {
                     self.table
-                        .get::<#ty_wrapped>(#struct_id::#offset_name, None)
+                        .get::<#ty_wrapped>(#struct_id::#offset_name)
                 }
             }
         });
@@ -265,9 +265,9 @@ impl ToTokens for Table<'_> {
                 type Inner = Self;
 
                 #[inline]
-                fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, butte::Error> {
                     let table = butte::Table { buf, loc };
-                    Self { table }
+                    Ok(Self { table })
                 }
             }
 
@@ -512,7 +512,7 @@ impl ToTokens for Enum<'_> {
             impl<'a> butte::Follow<'a> for #enum_id {
                 type Inner = Self;
 
-                fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, butte::Error> {
                     butte::read_scalar_at::<Self>(buf, loc)
                 }
             }
