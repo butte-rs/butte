@@ -20,7 +20,7 @@ use std::{
     marker::PhantomData,
     mem::size_of,
     slice::from_raw_parts,
-    str::from_utf8_unchecked,
+    str::from_utf8,
 };
 
 use crate::Error;
@@ -129,11 +129,26 @@ pub fn follow_cast_ref<'a, T: Sized + 'a>(buf: &'a [u8], loc: usize) -> Result<&
 impl<'a> Follow<'a> for &'a str {
     type Inner = &'a str;
     fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
+        // Len of the String/Vector
         let len = read_scalar_at::<UOffsetT>(&buf, loc)? as usize;
-        let slice = buf
-            .get(loc + SIZE_UOFFSET..loc + SIZE_UOFFSET + len)
-            .ok_or(Error::OutOfBounds)?;
-        Ok(unsafe { from_utf8_unchecked(slice) })
+
+        let end_loc = loc + SIZE_UOFFSET + len;
+
+        // We check bounds early, because we need to make sure strings are null-terminated
+        // The null byte not included in the string `len`
+        if end_loc >= buf.len() {
+            return Err(Error::OutOfBounds);
+        }
+        // This is effectively the cell *after* the String len
+        if buf[end_loc] != 0 {
+            return Err(Error::NonNullTerminatedString);
+        }
+
+        let slice = &buf[loc + SIZE_UOFFSET..end_loc];
+
+        // Strings are just byte vectors in Flatbuffers -- so one should use `&[u8]`
+        // for compatibility with other systems, and `&str` to enforce the payload is valid UTF8
+        from_utf8(slice).map_err(|_| Error::NonUtf8String)
     }
 }
 
