@@ -1,5 +1,6 @@
 /*
  * Copyright 2018 Google Inc. All rights reserved.
+ * Copyright 2019 Butte authors. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +21,7 @@ use crate::{
     endian_scalar::{emplace_scalar, read_scalar, read_scalar_at},
     follow::Follow,
     push::Push,
+    Error,
 };
 
 pub const FLATBUFFERS_MAX_BUFFER_SIZE: usize = (1u64 << 31) as usize;
@@ -43,9 +45,9 @@ pub const SIZE_I64: usize = size_of::<i64>();
 pub const SIZE_F32: usize = size_of::<f32>();
 pub const SIZE_F64: usize = size_of::<f64>();
 
-pub const SIZE_SOFFSET: usize = SIZE_I32;
-pub const SIZE_UOFFSET: usize = SIZE_U32;
-pub const SIZE_VOFFSET: usize = SIZE_I16;
+pub const SIZE_SOFFSET: usize = size_of::<SOffsetT>();
+pub const SIZE_UOFFSET: usize = size_of::<UOffsetT>();
+pub const SIZE_VOFFSET: usize = size_of::<VOffsetT>();
 
 pub const SIZE_SIZEPREFIX: usize = SIZE_UOFFSET;
 
@@ -56,8 +58,8 @@ pub type SOffsetT = i32;
 /// and lengths of vectors.
 pub type UOffsetT = u32;
 
-/// VOffsetT is a i32 that is used by vtables to store field data.
-pub type VOffsetT = i16;
+/// VOffsetT is a u16 that is used by vtables to store field data.
+pub type VOffsetT = u16;
 
 /// TableFinishedWIPOffset marks a WIPOffset as being for a finished table.
 #[derive(Clone, Copy)]
@@ -176,9 +178,9 @@ impl<T> ForwardsUOffset<T> {
 impl<'a, T: Follow<'a>> Follow<'a> for ForwardsUOffset<T> {
     type Inner = T::Inner;
     #[inline(always)]
-    fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-        let slice = &buf[loc..loc + SIZE_UOFFSET];
-        let off = read_scalar::<u32>(slice) as usize;
+    fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
+        let slice = buf.get(loc..loc + SIZE_UOFFSET).ok_or(Error::OutOfBounds)?;
+        let off = read_scalar::<u32>(slice)? as usize;
         T::follow(buf, loc + off)
     }
 }
@@ -197,9 +199,9 @@ impl<T> ForwardsVOffset<T> {
 impl<'a, T: Follow<'a>> Follow<'a> for ForwardsVOffset<T> {
     type Inner = T::Inner;
     #[inline(always)]
-    fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-        let slice = &buf[loc..loc + SIZE_VOFFSET];
-        let off = read_scalar::<VOffsetT>(slice) as usize;
+    fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
+        let slice = buf.get(loc..loc + SIZE_VOFFSET).ok_or(Error::OutOfBounds)?;
+        let off = read_scalar::<VOffsetT>(slice)? as usize;
         T::follow(buf, loc + off)
     }
 }
@@ -227,9 +229,9 @@ impl<T> BackwardsSOffset<T> {
 impl<'a, T: Follow<'a>> Follow<'a> for BackwardsSOffset<T> {
     type Inner = T::Inner;
     #[inline(always)]
-    fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-        let slice = &buf[loc..loc + SIZE_SOFFSET];
-        let off = read_scalar::<SOffsetT>(slice);
+    fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
+        let slice = buf.get(loc..loc + SIZE_SOFFSET).ok_or(Error::OutOfBounds)?;
+        let off = read_scalar::<SOffsetT>(slice)?;
         T::follow(buf, (loc as SOffsetT - off) as usize)
     }
 }
@@ -249,7 +251,7 @@ pub struct SkipSizePrefix<T>(PhantomData<T>);
 impl<'a, T: Follow<'a> + 'a> Follow<'a> for SkipSizePrefix<T> {
     type Inner = T::Inner;
     #[inline(always)]
-    fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
         T::follow(buf, loc + SIZE_SIZEPREFIX)
     }
 }
@@ -260,7 +262,7 @@ pub struct SkipRootOffset<T>(PhantomData<T>);
 impl<'a, T: Follow<'a> + 'a> Follow<'a> for SkipRootOffset<T> {
     type Inner = T::Inner;
     #[inline(always)]
-    fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
         T::follow(buf, loc + SIZE_UOFFSET)
     }
 }
@@ -271,8 +273,9 @@ pub struct FileIdentifier;
 impl<'a> Follow<'a> for FileIdentifier {
     type Inner = &'a [u8];
     #[inline(always)]
-    fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-        &buf[loc..loc + FILE_IDENTIFIER_LENGTH]
+    fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
+        buf.get(loc..loc + FILE_IDENTIFIER_LENGTH)
+            .ok_or(Error::OutOfBounds)
     }
 }
 
@@ -283,7 +286,7 @@ pub struct SkipFileIdentifier<T>(PhantomData<T>);
 impl<'a, T: Follow<'a> + 'a> Follow<'a> for SkipFileIdentifier<T> {
     type Inner = T::Inner;
     #[inline(always)]
-    fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
         T::follow(buf, loc + FILE_IDENTIFIER_LENGTH)
     }
 }
@@ -291,8 +294,8 @@ impl<'a, T: Follow<'a> + 'a> Follow<'a> for SkipFileIdentifier<T> {
 impl<'a> Follow<'a> for bool {
     type Inner = bool;
     #[inline(always)]
-    fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-        read_scalar_at::<u8>(buf, loc) != 0
+    fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
+        Ok(read_scalar_at::<u8>(buf, loc)? != 0)
     }
 }
 
@@ -306,7 +309,7 @@ macro_rules! impl_follow_for_endian_scalar {
         impl<'a> Follow<'a> for $ty {
             type Inner = $ty;
             #[inline(always)]
-            fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+            fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
                 read_scalar_at::<$ty>(buf, loc)
             }
         }

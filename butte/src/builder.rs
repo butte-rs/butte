@@ -1,18 +1,19 @@
 /*
- * Copyright 2018 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+* Copyright 2018 Google Inc. All rights reserved.
+* Copyright 2019 Butte authors. All rights reserved.
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
 
 extern crate smallvec;
 
@@ -351,7 +352,12 @@ impl<'fbb> FlatBufferBuilder<'fbb> {
     ) {
         let idx = self.used_space() - tab_revloc.value() as usize;
         let tab = Table::new(&self.owned_buf[self.head..], idx);
-        let o = tab.vtable().get(slot_byte_loc) as usize;
+        let o = tab
+            .vtable()
+            .expect("Could not get VTable")
+            .get(slot_byte_loc)
+            .expect("Could not get byte loc")
+            .expect("No value at byte loc") as usize;
         assert!(o != 0, "missing required field {}", assert_msg_name);
     }
 
@@ -491,7 +497,7 @@ impl<'fbb> FlatBufferBuilder<'fbb> {
 
         {
             let n = self.head + self.used_space() - object_revloc_to_vtable.value() as usize;
-            let saw = read_scalar_at::<UOffsetT>(&self.owned_buf, n);
+            let saw = read_scalar_at::<UOffsetT>(&self.owned_buf, n).expect("Buffer too small");
             debug_assert_eq!(saw, 0xF0F0_F0F0);
             emplace_scalar::<SOffsetT>(
                 &mut self.owned_buf[n..n + SIZE_SOFFSET],

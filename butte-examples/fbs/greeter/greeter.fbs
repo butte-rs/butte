@@ -16,10 +16,16 @@ table ManyHellosRequest {
 }
 
 namespace baz.buzz;
+
+table FooBar {
+  name: string;
+  my_foo: Foo;
+}
+
 enum Foo : int32 {
-  a,
-  b,
-  c
+  A,
+  B,
+  C
 }
 
 /// A greeter service!

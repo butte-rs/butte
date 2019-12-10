@@ -209,9 +209,9 @@ impl ToTokens for Table<'_> {
 
             quote! {
                 #[inline]
-                pub fn #snake_name(&self) -> Option<#ty_simple_lifetime> {
+                pub fn #snake_name(&self) -> Result<Option<#ty_simple_lifetime>, butte::Error> {
                     self.table
-                        .get::<#ty_wrapped>(#struct_id::#offset_name, None)
+                        .get::<#ty_wrapped>(#struct_id::#offset_name)
                 }
             }
         });
@@ -265,9 +265,9 @@ impl ToTokens for Table<'_> {
                 type Inner = Self;
 
                 #[inline]
-                fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, butte::Error> {
                     let table = butte::Table { buf, loc };
-                    Self { table }
+                    Ok(Self { table })
                 }
             }
 
@@ -476,26 +476,49 @@ impl ToTokens for Enum<'_> {
 
         // assign a value to the key if one was given, otherwise give it the
         // enumerated index's value
-        let fields = values
-            .iter()
-            .enumerate()
-            .map(|(i, EnumVal { id: key, value })| {
-                // format the value with the correct type, i.e., base_type
-                let scalar_value = lit_int(
-                    if let Some(constant) = *value {
-                        constant
-                    } else {
-                        i.try_into().expect("invalid conversion to enum base type")
-                    },
-                    base_type.to_token_stream(),
-                );
-                quote! {
-                    #key = #scalar_value
-                }
-            });
+        let variants_and_scalars =
+            values
+                .iter()
+                .enumerate()
+                .map(|(i, EnumVal { id: key, value })| {
+                    // format the value with the correct type, i.e., base_type
+                    let scalar_value = lit_int(
+                        if let Some(constant) = *value {
+                            constant
+                        } else {
+                            i.try_into().expect("invalid conversion to enum base type")
+                        },
+                        base_type.to_token_stream(),
+                    );
+                    (quote!(#key), quote!(#scalar_value))
+                });
 
         let raw_snake_enum_name = enum_id.raw.to_snake_case();
         let enum_id_fn_name = format_ident!("enum_name_{}", raw_snake_enum_name);
+
+        let from_base_to_enum_variants =
+            variants_and_scalars
+                .clone()
+                .map(|(variant_name, scalar_value)| {
+                    quote! {
+                        #scalar_value => Ok(<#enum_id>::#variant_name)
+                    }
+                });
+
+        let from_enum_variant_to_base =
+            variants_and_scalars
+                .clone()
+                .map(|(variant_name, scalar_value)| {
+                    quote! {
+                        <#enum_id>::#variant_name => #scalar_value
+                    }
+                });
+
+        let fields = variants_and_scalars.map(|(variant_name, scalar_value)| {
+            quote! {
+                #variant_name = #scalar_value
+            }
+        });
 
         // TODO: Maybe separate these pieces to avoid variables that used far
         // away from their definition.
@@ -512,24 +535,27 @@ impl ToTokens for Enum<'_> {
             impl<'a> butte::Follow<'a> for #enum_id {
                 type Inner = Self;
 
-                fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                    butte::read_scalar_at::<Self>(buf, loc)
+                fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, butte::Error> {
+                    let scalar = butte::read_scalar_at::<#base_type>(buf, loc)?;
+                    <Self as std::convert::TryFrom<#base_type>>::try_from(scalar)
                 }
             }
 
-            impl butte::EndianScalar for #enum_id {
-                #[inline]
-                fn to_little_endian(self) -> Self {
-                    let n = #base_type::to_le(self as #base_type);
-                    let p = &n as *const #base_type as *const Self;
-                    unsafe { *p }
+            impl std::convert::TryFrom<#base_type> for #enum_id {
+                type Error = butte::Error;
+                fn try_from(value: #base_type) -> Result<Self, Self::Error> {
+                    match value {
+                        #(#from_base_to_enum_variants),*,
+                        _ => Err(butte::Error::UnknownEnumVariant)
+                    }
                 }
+            }
 
-                #[inline]
-                fn from_little_endian(self) -> Self {
-                    let n = #base_type::from_le(self as #base_type);
-                    let p = &n as *const #base_type as *const Self;
-                    unsafe { *p }
+            impl From<#enum_id> for #base_type {
+                fn from(value: #enum_id) -> #base_type {
+                    match value {
+                        #(#from_enum_variant_to_base),*
+                    }
                 }
             }
 
@@ -538,7 +564,8 @@ impl ToTokens for Enum<'_> {
 
                 #[inline]
                 fn push(&self, dst: &mut [u8], _rest: &[u8]) {
-                    butte::emplace_scalar::<Self>(dst, *self);
+                    let scalar = <#base_type>::from(*self);
+                    butte::emplace_scalar::<#base_type>(dst, scalar);
                 }
             }
 
