@@ -99,7 +99,6 @@ impl<'a, T: SafeSliceAccess + 'a> Vector<'a, T> {
 
 impl SafeSliceAccess for u8 {}
 impl SafeSliceAccess for i8 {}
-impl SafeSliceAccess for bool {}
 
 #[cfg(target_endian = "little")]
 mod le_safe_slice_impls {
@@ -118,12 +117,20 @@ mod le_safe_slice_impls {
 #[cfg(target_endian = "little")]
 pub use self::le_safe_slice_impls::*;
 
-pub fn follow_cast_ref<'a, T: Sized + 'a>(buf: &'a [u8], loc: usize) -> Result<&'a T, Error> {
+/// Follow the pointer to the Vector payload, and cast it to T
+///
+/// # Safety
+///
+/// A pointer to T must be safely cast from any bytes and thus
+/// have the right representation, alignment, ...
+pub unsafe fn follow_cast_ref<'a, T: Sized + 'a>(
+    buf: &'a [u8],
+    loc: usize,
+) -> Result<&'a T, Error> {
     let sz = size_of::<T>();
     let buf = buf.get(loc..loc + sz).ok_or(Error::OutOfBounds)?;
     let ptr = buf.as_ptr() as *const T;
-    // magnet: is this safe for any T: Sized? I believe we'd need an extra bound with the required invariants.
-    Ok(unsafe { &*ptr })
+    Ok(&*ptr)
 }
 
 impl<'a> Follow<'a> for &'a str {
