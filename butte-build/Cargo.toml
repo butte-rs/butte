@@ -43,5 +43,5 @@ nom = { version = "5.0.1", features = ["regexp"] }
 proc-macro2 = "1.0.6"
 quote = "1.0.2"
 syn = "1.0.7"
-typed-builder = "0.3.0"
+typed-builder = "0.4.0"
 structopt = "0.3.3"
