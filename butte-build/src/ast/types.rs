@@ -279,7 +279,9 @@ impl<'a> From<[Type<'a>; 1]> for Type<'a> {
 }
 
 /// Integer constant type.
-pub type IntegerConstant = i64;
+///
+/// This is `i128` because it needs to be able to contain values of `u64` _and_ `i64` types.
+pub type IntegerConstant = i128;
 
 /// Floating point constant type.
 pub type FloatingConstant = f64;
