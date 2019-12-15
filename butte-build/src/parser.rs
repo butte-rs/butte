@@ -774,9 +774,9 @@ pub fn field_decl(input: &str) -> IResult<&str, Field> {
                 type_,
                 opt(preceded(
                     tuple((comment_or_space0, equals, comment_or_space0)),
-                    terminated(default_value, comment_or_space0),
+                    default_value,
                 )),
-                metadata,
+                preceded(comment_or_space0, metadata),
             )),
             tuple((comment_or_space0, semicolon)),
         ),
