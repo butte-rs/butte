@@ -188,7 +188,7 @@ pub struct Field<'a> {
     pub ty: Type<'a>,
 
     #[builder(default)]
-    pub scalar: Option<Scalar>,
+    pub default_value: Option<DefaultValue<'a>>,
 
     #[builder(default)]
     pub metadata: Option<Metadata<'a>>,
@@ -259,10 +259,13 @@ pub enum Type<'a> {
 impl Type<'_> {
     /// Check whether a `Type` is scalar.
     pub fn is_scalar(&self) -> bool {
-        // If it's a string, array type, or type name (UDT) it's not a scalar.
-        // Otherwise it is.
+        // If it's a string or array type it's not a scalar.
+        //
+        // TODO: enums are scalars, tables are not -- what about structs?
+        // we might need more context to determine if the type is a scalar
+        // to catch errors early
         match self {
-            Type::String | Type::Array(_) | Type::Ident(_) => false,
+            Type::String | Type::Array(_) => false,
             _ => true,
         }
     }
@@ -328,6 +331,38 @@ impl<'a> From<Vec<(Ident<'a>, Value<'a>)>> for Object<'a> {
     /// Convert a `Vec` of `Ident`/`Value` pairs to a `Value`.
     fn from(values: Vec<(Ident<'a>, Value<'a>)>) -> Self {
         Self::builder().values(HashMap::from_iter(values)).build()
+    }
+}
+
+/// Default field value: A `Scalar` or an `Ident` referring to an enum variant
+/// on the current field enum type
+#[derive(Debug, Clone, PartialEq, From)]
+pub enum DefaultValue<'a> {
+    Scalar(Scalar),
+    Ident(Ident<'a>),
+}
+
+impl From<IntegerConstant> for DefaultValue<'_> {
+    fn from(value: IntegerConstant) -> Self {
+        Scalar::from(value).into()
+    }
+}
+
+impl From<FloatingConstant> for DefaultValue<'_> {
+    fn from(value: FloatingConstant) -> Self {
+        Scalar::from(value).into()
+    }
+}
+
+impl From<BooleanConstant> for DefaultValue<'_> {
+    fn from(value: BooleanConstant) -> Self {
+        Scalar::from(value).into()
+    }
+}
+
+impl<'a> From<&'a str> for DefaultValue<'a> {
+    fn from(value: &'a str) -> Self {
+        Ident::from(value).into()
     }
 }
 
@@ -428,7 +463,6 @@ mod type_tests {
         assert!(Type::Float32.is_scalar());
         assert!(Type::UInt16.is_scalar());
         assert!(!Type::String.is_scalar());
-        assert!(!Type::Ident(vec!["foobar".into()].into()).is_scalar());
         assert!(!Type::Array(Box::new(Type::Byte)).is_scalar());
     }
 }

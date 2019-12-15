@@ -36,6 +36,36 @@ mod single_value_tests {
 }
 
 #[macro_export]
+macro_rules! default_value {
+    ($value:tt) => {
+        $crate::types::DefaultValue::from($value)
+    };
+}
+
+#[cfg(test)]
+mod default_value_tests {
+    #[test]
+    fn test_default_value() {
+        use crate::types::*;
+
+        let val = default_value!(1);
+        assert_eq!(val, DefaultValue::Scalar(Scalar::Integer(1)));
+
+        let val = default_value!(1.0);
+        assert_eq!(val, DefaultValue::Scalar(Scalar::Float(1.0)));
+
+        let val = default_value!(true);
+        assert_eq!(val, DefaultValue::Scalar(Scalar::Boolean(true)));
+
+        let val = default_value!(false);
+        assert_eq!(val, DefaultValue::Scalar(Scalar::Boolean(false)));
+
+        let val = default_value!("Foo");
+        assert_eq!(val, DefaultValue::Ident(Ident::from("Foo")));
+    }
+}
+
+#[macro_export]
 macro_rules! namespace {
     ($path:path) => {
         $crate::types::Namespace::builder()
@@ -125,7 +155,7 @@ macro_rules! field {
         $crate::types::Field::builder()
             .id($crate::types::Ident::from(stringify!($name)))
             .ty($crate::types::Type::$ty)
-            .scalar(Some($crate::scalar!($default)))
+            .default_value(Some($crate::default_value!($default)))
             .build()
     };
     ($name:ident, [ $ty:ident ]) => {

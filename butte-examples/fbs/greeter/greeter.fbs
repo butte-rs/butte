@@ -19,7 +19,7 @@ namespace baz.buzz;
 
 table FooBar {
   name: string;
-  my_foo: Foo;
+  my_foo: Foo = A;
 }
 
 enum Foo : int32 {
