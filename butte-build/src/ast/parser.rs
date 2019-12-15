@@ -1640,7 +1640,7 @@ mod dec_integer_constant_tests {
         let u64_max = std::u64::MAX;
         let u64_max_string = u64_max.to_string();
         let result = dec_integer_constant(&u64_max_string);
-        let expected: i128 = u64_max.try_into()?;
+        let expected: IntegerConstant = u64_max.try_into()?;
         assert_successful_parse!(result, expected);
         Ok(())
     }
@@ -1650,7 +1650,7 @@ mod dec_integer_constant_tests {
         let i64_max = std::i64::MAX;
         let i64_max_string = i64_max.to_string();
         let result = dec_integer_constant(&i64_max_string);
-        let expected: i128 = i64_max.try_into()?;
+        let expected: IntegerConstant = i64_max.try_into()?;
         assert_successful_parse!(result, expected);
         Ok(())
     }
@@ -1660,7 +1660,7 @@ mod dec_integer_constant_tests {
         let i64_min = std::i64::MIN;
         let i64_min_string = i64_min.to_string();
         let result = dec_integer_constant(&i64_min_string);
-        let expected: i128 = i64_min.try_into()?;
+        let expected: IntegerConstant = i64_min.try_into()?;
         assert_successful_parse!(result, expected);
         Ok(())
     }
