@@ -2,6 +2,9 @@ use crate::ast::types::*;
 use anyhow::{anyhow, Result};
 
 #[cfg(test)]
+use std::convert::TryInto;
+
+#[cfg(test)]
 use crate::{
     comment as doc, default_value, e_item, element as elem, enum_, field, meta, method, namespace,
     object as obj, rpc, schema, table, union, value as val,
@@ -1631,6 +1634,36 @@ pub fn dec_integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
 #[cfg(test)]
 mod dec_integer_constant_tests {
     use super::*;
+
+    #[test]
+    fn test_u64() -> Result<()> {
+        let u64_max = std::u64::MAX;
+        let u64_max_string = u64_max.to_string();
+        let result = dec_integer_constant(&u64_max_string);
+        let expected: i128 = u64_max.try_into()?;
+        assert_successful_parse!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_i64_max() -> Result<()> {
+        let i64_max = std::i64::MAX;
+        let i64_max_string = i64_max.to_string();
+        let result = dec_integer_constant(&i64_max_string);
+        let expected: i128 = i64_max.try_into()?;
+        assert_successful_parse!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_i64_min() -> Result<()> {
+        let i64_min = std::i64::MIN;
+        let i64_min_string = i64_min.to_string();
+        let result = dec_integer_constant(&i64_min_string);
+        let expected: i128 = i64_min.try_into()?;
+        assert_successful_parse!(result, expected);
+        Ok(())
+    }
 
     #[test]
     fn test_dec_integer_constant() {
