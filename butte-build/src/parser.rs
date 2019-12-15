@@ -797,6 +797,14 @@ mod field_tests {
     use super::*;
 
     #[test]
+    fn test_field_decl_with_metadata() {
+        let input = "message: string (required);";
+        let result = field_decl(input);
+        let expected = field!(message, String, [meta!(required)]);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
     fn test_field_decl_with_comments() {
         // please never write a field like this
         let input = "\
@@ -1142,6 +1150,14 @@ mod metadata_tests {
     }
 
     #[test]
+    fn test_single_metadata() {
+        let input = "(required)";
+        let result = metadata(input);
+        let expected = Some(Metadata::from(vec![meta!(required)]));
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
     fn test_empty_metadata() {
         let input = "()";
         let result = metadata(input);
@@ -1439,6 +1455,22 @@ pub fn table_decl(input: &str) -> IResult<&str, Table> {
 #[cfg(test)]
 mod table_tests {
     use super::*;
+
+    #[test]
+    fn test_table_with_required_field() {
+        let input = "\
+/// A response with a required field
+table HelloReply {
+  message: string (required);
+}";
+        let result = table_decl(input);
+        let expected = table!(
+            HelloReply,
+            doc!(" A response with a required field"),
+            [field!(message, String, [meta!(required)])]
+        );
+        assert_successful_parse!(result, expected);
+    }
 
     #[test]
     fn test_table_with_comments() {
