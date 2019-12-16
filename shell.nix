@@ -16,6 +16,5 @@ let
 in with nixpkgs;
   mkShell {
     name = "rust-stable";
-    buildInputs = [ rust-stable protobuf flatbuffers ];
-    PROTOC = "${protobuf}/bin/protoc";
+    buildInputs = [ rust-stable ];
   }
