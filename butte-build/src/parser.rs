@@ -3,8 +3,8 @@ use anyhow::{anyhow, Result};
 
 #[cfg(test)]
 use crate::{
-    comment as doc, e_item, element as elem, enum_, field, meta, method, namespace, object as obj,
-    rpc, schema, table, union, value as val,
+    comment as doc, default_value, e_item, element as elem, enum_, field, meta, method, namespace,
+    object as obj, rpc, schema, table, union, value as val,
 };
 
 use hexf_parse::parse_hexf64;
@@ -774,18 +774,18 @@ pub fn field_decl(input: &str) -> IResult<&str, Field> {
                 type_,
                 opt(preceded(
                     tuple((comment_or_space0, equals, comment_or_space0)),
-                    terminated(scalar, comment_or_space0),
+                    terminated(default_value, comment_or_space0),
                 )),
                 metadata,
             )),
             tuple((comment_or_space0, semicolon)),
         ),
-        |(comment, name, ty, scalar, metadata)| {
+        |(comment, name, ty, default_value, metadata)| {
             Field::builder()
                 .doc(comment)
                 .id(name)
                 .ty(ty)
-                .scalar(scalar)
+                .default_value(default_value)
                 .metadata(metadata)
                 .build()
         },
@@ -835,6 +835,18 @@ foo // bar
         let input = "foo:float64    //faz\n;";
         let result = field_decl(input);
         let expected = field!(foo, Float64);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_field_decl_enum_default_value() {
+        let input = "foo : MyEnum = Foo;";
+        let result = field_decl(input);
+        let expected = Field::builder()
+            .id("foo")
+            .ty(Type::Ident(DottedIdent::from(vec![Ident::from("MyEnum")])))
+            .default_value(Some(default_value!("Foo")))
+            .build();
         assert_successful_parse!(result, expected);
     }
 }
@@ -1352,6 +1364,29 @@ mod value_tests {
         let result = value_(r#"["a", 1]"#);
         let expected = val!(["a", 1]);
         assert_successful_parse!(result, expected);
+    }
+}
+
+/// `DefaultValue`s are `Scalar`s or `Ident`s
+/// `Ident`s refer to an enum variant on the field type
+pub fn default_value(input: &str) -> IResult<&str, DefaultValue> {
+    alt((
+        map(scalar, DefaultValue::from),
+        map(ident, DefaultValue::from),
+    ))(input)
+}
+
+#[cfg(test)]
+mod default_value_tests {
+    use super::*;
+
+    #[test]
+    fn test_default_value() {
+        let result = default_value("1");
+        assert_successful_parse!(result, default_value!(1));
+
+        let result = default_value("Foo");
+        assert_successful_parse!(result, default_value!("Foo"));
     }
 }
 

@@ -97,6 +97,35 @@ fn to_type(ty: &Type, lifetime: impl ToTokens, wrap_refs_types: impl ToTokens) -
     }
 }
 
+/// Convert a `types::DefaultValue` to a default field value
+fn to_default_value(arg_ty: &impl ToTokens, default_value: &DefaultValue<'_>) -> impl ToTokens {
+    match default_value {
+        // Scalar field
+        DefaultValue::Scalar(s) => s.to_token_stream(),
+        // Enum field default variant
+        DefaultValue::Ident(i) => {
+            let variant = format_ident!("{}", i.raw);
+            quote!(<#arg_ty>::#variant).to_token_stream()
+        }
+    }
+}
+
+/// Convert a `types::DefaultValue` to a doc comment describing the value
+fn to_default_value_doc(ty: &Type, default_value: &Option<DefaultValue<'_>>) -> impl ToTokens {
+    if let Some(default_value) = default_value {
+        let doc_value = match default_value {
+            // Scalar field
+            DefaultValue::Scalar(s) => s.to_token_stream().to_string(),
+            // Enum field default variant
+            DefaultValue::Ident(i) => format!("{}::{}", quote!(#ty), i.raw),
+        };
+        let doc_string = format!(" The default value for this field is __{}__", doc_value);
+        quote!(#[doc = #doc_string])
+    } else {
+        quote!()
+    }
+}
+
 fn offset_id(field: &Field) -> impl ToTokens {
     format_ident!("VT_{}", field.id.as_ref().to_shouty_snake_case())
 }
@@ -123,18 +152,14 @@ impl ToTokens for Table<'_> {
             |Field {
                  id: field_id,
                  ty,
-                 scalar,
+                 default_value,
                  ..
              }| {
                 let arg_ty = to_type(ty, quote!('a), quote!(butte::WIPOffset));
-                // Scalar fields can have a default value
-                let default = if let Some(default_value) = scalar {
-                    quote!(#[default = #default_value])
-                } else {
-                    quote!()
-                };
+                // Scalar or enum fields can have a default value
+                let default_doc = to_default_value_doc(&ty, default_value);
                 quote! {
-                    #default
+                    #default_doc
                     pub #field_id: #arg_ty
                 }
             },
@@ -167,7 +192,7 @@ impl ToTokens for Table<'_> {
             let Field {
                 id: field_id,
                 ty,
-                scalar,
+                default_value,
                 ..
             } = field;
             let add_method_name = format_ident!("add_{}", field_id.raw);
@@ -175,8 +200,9 @@ impl ToTokens for Table<'_> {
             let field_offset = quote!(#struct_id::#offset);
             let arg_ty = to_type(ty, quote!('_), quote!(butte::WIPOffset));
             let body = if ty.is_scalar() {
-                if let Some(default_value) = scalar {
-                    quote!(self.fbb.push_slot<#arg_ty>(#field_offset, #field_id, #default_value))
+                if let Some(default_value) = default_value {
+                    let default_value = to_default_value(&arg_ty, &default_value);
+                    quote!(self.fbb.push_slot::<#arg_ty>(#field_offset, #field_id, #default_value))
                 } else {
                     quote!(self.fbb.push_slot_always::<#arg_ty>(#field_offset, #field_id))
                 }
