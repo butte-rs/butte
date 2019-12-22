@@ -188,6 +188,48 @@ macro_rules! field {
             ))
             .build()
     };
+    ($name:ident, $ty:ident = $default:expr, [ $($meta:expr),* ]) => {
+        $crate::types::Field::builder()
+            .id($crate::types::Ident::from(stringify!($name)))
+            .ty($crate::types::Type::$ty)
+            .scalar(Some($crate::scalar!($default)))
+            .metadata(Some($crate::types::Metadata::from(vec![ $($meta),* ])))
+            .build()
+    };
+    ($name:ident, [ $ty:ident ], [ $($meta:expr),* ]) => {
+        $crate::types::Field::builder()
+            .id($crate::types::Ident::from(stringify!($name)))
+            .ty($crate::types::Type::Array(Box::new(
+                $crate::types::Type::$ty,
+            )))
+            .metadata(Some($crate::types::Metadata::from(vec![ $($meta),* ])))
+            .build()
+    };
+    ($name:ident, $ty:ident, [ $($meta:expr),* ]) => {
+        $crate::types::Field::builder()
+            .id($crate::types::Ident::from(stringify!($name)))
+            .ty($crate::types::Type::$ty)
+            .metadata(Some($crate::types::Metadata::from(vec![ $($meta),* ])))
+            .build()
+    };
+    ($name:ident, [ $ty:path ], [ $($meta:expr),* ]) => {
+        $crate::types::Field::builder()
+            .id($crate::types::Ident::from(stringify!($name)))
+            .ty($crate::types::Type::Array(Box::new(
+                $crate::types::Type::Ident($crate::dotted_ident_from_path_string!($ty)),
+            )))
+            .metadata(Some($crate::types::Metadata::from(vec![ $($meta),* ])))
+            .build()
+    };
+    ($name:ident, $ty:path, [ $($meta:expr),* ]) => {
+        $crate::types::Field::builder()
+            .id($crate::types::Ident::from(stringify!($name)))
+            .ty($crate::types::Type::Ident(
+                $crate::dotted_ident_from_path_string!($ty),
+            ))
+            .metadata(Some($crate::types::Metadata::from(vec![ $($meta),* ])))
+            .build()
+    };
 }
 
 #[macro_export]

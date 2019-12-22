@@ -13,10 +13,8 @@ let
       "rust-src"
   ];
   rust-stable = stable.rust.override { extensions = extensions; };
-in with nixpkgs; {
-  stable = mkShell {
+in with nixpkgs;
+  mkShell {
     name = "rust-stable";
-    buildInputs = [ rust-stable protobuf flatbuffers ];
-    PROTOC = "${protobuf}/bin/protoc";
-  };
-}
+    buildInputs = [ rust-stable ];
+  }
