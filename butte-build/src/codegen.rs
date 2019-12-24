@@ -1,4 +1,4 @@
-use crate::types::*;
+use crate::ast::types::*;
 
 #[cfg(test)]
 use crate::{field, table};

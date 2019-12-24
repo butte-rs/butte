@@ -1,5 +1,4 @@
 /// Compile flatbuffers files from the command line.
-use anyhow;
 use butte_build::compile_fbs_generic;
 
 use structopt::StructOpt;
