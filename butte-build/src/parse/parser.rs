@@ -1,4 +1,4 @@
-use crate::types::*;
+use crate::parse::types::*;
 use anyhow::{anyhow, Result};
 
 #[cfg(test)]
