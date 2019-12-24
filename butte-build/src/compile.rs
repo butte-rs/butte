@@ -21,8 +21,10 @@ pub fn compile_fbs_generic(
     // parse the schema
     let (_, schema) =
         crate::parser::schema_decl(schema_text.as_str()).map_err(|_| anyhow!("parse failed"))?;
+    let ir_root =
+        crate::ir::Builder::build(schema).map_err(|_| anyhow!("semantic analysis failed"))?;
 
-    let code = format!("{}", schema.to_token_stream());
+    let code = format!("{}", ir_root.to_token_stream());
 
     let text_output = if !ugly {
         let mut cmd = Command::new("rustfmt")
