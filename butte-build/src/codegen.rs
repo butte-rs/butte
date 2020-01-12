@@ -1,7 +1,4 @@
-use crate::parse::types::*;
-
-#[cfg(test)]
-use crate::{field, table};
+use crate::{ir::types::*, parse::types::*};
 
 use butte::VOffsetT;
 use heck::{ShoutySnakeCase, SnakeCase};
@@ -71,6 +68,24 @@ mod ident_tests {
     }
 }
 
+impl ToTokens for IrIdent<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        format_ident!("{}", self.raw.as_ref()).to_tokens(tokens)
+    }
+}
+
+#[cfg(test)]
+mod ir_ident_tests {
+    use super::*;
+
+    #[test]
+    fn test_visit_ident() {
+        let result = to_code(IrIdent::from("foo"));
+        let expected = "foo";
+        assert_eq!(result, expected);
+    }
+}
+
 impl ToTokens for Scalar {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
@@ -82,9 +97,13 @@ impl ToTokens for Scalar {
 }
 
 /// Convert a `types::Type` to a type with the supplied wrapper for reference types
-fn to_type(ty: &Type, lifetime: impl ToTokens, wrap_refs_types: impl ToTokens) -> impl ToTokens {
+fn to_type_token(
+    ty: &IrType,
+    lifetime: impl ToTokens,
+    wrap_refs_types: impl ToTokens,
+) -> impl ToTokens {
     match ty {
-        Type::String => {
+        IrType::String => {
             let wrap_tokens = wrap_refs_types.into_token_stream();
             if wrap_tokens.is_empty() {
                 quote!(&#lifetime str)
@@ -111,7 +130,7 @@ fn to_default_value(arg_ty: &impl ToTokens, default_value: &DefaultValue<'_>) ->
 }
 
 /// Convert a `types::DefaultValue` to a doc comment describing the value
-fn to_default_value_doc(ty: &Type, default_value: &Option<DefaultValue<'_>>) -> impl ToTokens {
+fn to_default_value_doc(ty: &IrType, default_value: &Option<DefaultValue<'_>>) -> impl ToTokens {
     if let Some(default_value) = default_value {
         let doc_value = match default_value {
             // Scalar field
@@ -126,36 +145,41 @@ fn to_default_value_doc(ty: &Type, default_value: &Option<DefaultValue<'_>>) -> 
     }
 }
 
-fn offset_id(field: &Field) -> impl ToTokens {
-    format_ident!("VT_{}", field.id.as_ref().to_shouty_snake_case())
+fn offset_id(field: &IrField) -> impl ToTokens {
+    format_ident!("VT_{}", field.ident.as_ref().to_shouty_snake_case())
 }
 
-impl ToTokens for Table<'_> {
+impl ToTokens for IrTable<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self {
-            id: struct_id,
+            ident: struct_id,
             fields,
             doc,
             ..
         } = self;
 
-        let raw_struct_name = struct_id.raw;
+        let struct_id = struct_id.simple(); // discard namespace
+        let raw_struct_name = struct_id.raw.as_ref();
 
-        let builder_add_calls = fields.iter().map(|Field { id: field_id, .. }| {
-            let raw_field_name = field_id.raw;
-            let add_field_method = format_ident!("add_{}", raw_field_name);
-            quote!(builder.#add_field_method(args.#field_id);)
-        });
+        let builder_add_calls = fields.iter().map(
+            |IrField {
+                 ident: field_id, ..
+             }| {
+                let raw_field_name = field_id.raw.as_ref();
+                let add_field_method = format_ident!("add_{}", raw_field_name);
+                quote!(builder.#add_field_method(args.#field_id);)
+            },
+        );
 
         let args = format_ident!("{}Args", raw_struct_name);
         let args_fields = fields.iter().map(
-            |Field {
-                 id: field_id,
+            |IrField {
+                 ident: field_id,
                  ty,
                  default_value,
                  ..
              }| {
-                let arg_ty = to_type(ty, quote!('a), quote!(butte::WIPOffset));
+                let arg_ty = to_type_token(ty, quote!('a), quote!(butte::WIPOffset));
                 // Scalar or enum fields can have a default value
                 let default_doc = to_default_value_doc(&ty, default_value);
                 quote! {
@@ -165,40 +189,36 @@ impl ToTokens for Table<'_> {
             },
         );
 
-        let builder_type = format_ident!("{}Builder", struct_id.raw);
+        let builder_type = format_ident!("{}Builder", raw_struct_name);
 
         // TODO: field accessors
         // TODO: check the impl of offset generation
         // TODO: unions
         // TODO: testing this is going to be fun
-        let field_nested_flatbuffers = fields.iter().filter_map(|Field { id: field_id, metadata, .. }| {
-            let method_name = format_ident!("{}_nested_flatbuffer", field_id.raw);
-            if let Some(metadata) = metadata {
-                if metadata.values.contains_key(&Ident::from("nested_flatbuffer")) {
-                    Some(quote! {
-                        pub fn #method_name(&self) -> Option<Self> {
-                            self.#field_id.map(|data| <butte::ForwardsUOffset<Self>>::follow(data, 0))
-                        }
-                    })
-                } else {
-                    None
-                }
+        let field_nested_flatbuffers = fields.iter().filter_map(|IrField { ident: field_id, metadata, .. }| {
+            let method_name = format_ident!("{}_nested_flatbuffer", field_id.raw.as_ref());
+            if metadata.is_nested_flatbuffers() {
+                Some(quote! {
+                    pub fn #method_name(&self) -> Option<Self> {
+                        self.#field_id.map(|data| <butte::ForwardsUOffset<Self>>::follow(data, 0))
+                    }
+                })
             } else {
                 None
             }
         });
 
         let builder_field_methods = fields.iter().map(|field| {
-            let Field {
-                id: field_id,
+            let IrField {
+                ident: field_id,
                 ty,
                 default_value,
                 ..
             } = field;
-            let add_method_name = format_ident!("add_{}", field_id.raw);
-            let offset = offset_id(&field);
+            let add_method_name = format_ident!("add_{}", field_id.raw.as_ref());
+            let offset = offset_id(field);
             let field_offset = quote!(#struct_id::#offset);
-            let arg_ty = to_type(ty, quote!('_), quote!(butte::WIPOffset));
+            let arg_ty = to_type_token(ty, quote!('_), quote!(butte::WIPOffset));
             let body = if ty.is_scalar() {
                 if let Some(default_value) = default_value {
                     let default_value = to_default_value(&arg_ty, &default_value);
@@ -209,7 +229,7 @@ impl ToTokens for Table<'_> {
             } else {
                 quote!(self.fbb.push_slot_always::<#arg_ty>(#field_offset, #field_id))
             };
-            let arg_ty = to_type(ty, quote!('b), quote!(butte::WIPOffset));
+            let arg_ty = to_type_token(ty, quote!('b), quote!(butte::WIPOffset));
             quote! {
                 #[inline]
                 fn #add_method_name(&mut self, #field_id: #arg_ty) {
@@ -227,11 +247,11 @@ impl ToTokens for Table<'_> {
         });
 
         let field_accessors = fields.iter().map(|field| {
-            let snake_name = format_ident!("{}", field.id.as_ref().to_snake_case());
-            let offset_name = offset_id(&field);
+            let snake_name = format_ident!("{}", field.ident.as_ref().to_snake_case());
+            let offset_name = offset_id(field);
             let ty = &field.ty;
-            let ty_simple_lifetime = to_type(ty, quote!('a), quote!());
-            let ty_wrapped = to_type(ty, quote!(), quote!(butte::ForwardsUOffset));
+            let ty_simple_lifetime = to_type_token(ty, quote!('a), quote!());
+            let ty_wrapped = to_type_token(ty, quote!(), quote!(butte::ForwardsUOffset));
 
             quote! {
                 #[inline]
@@ -242,10 +262,10 @@ impl ToTokens for Table<'_> {
             }
         });
 
-        let struct_offset_enum_name = format_ident!("{}Offset", struct_id.raw);
+        let struct_offset_enum_name = format_ident!("{}Offset", raw_struct_name);
 
         let required_fields = fields.iter().map(|field| {
-            let snake_name = field.id.as_ref().to_snake_case();
+            let snake_name = field.ident.as_ref().to_snake_case();
             let offset_name = offset_id(field);
             quote! {
                 self.fbb.required(o, #struct_id::#offset_name, #snake_name);
@@ -333,48 +353,60 @@ impl ToTokens for Table<'_> {
     }
 }
 
-#[cfg(test)]
-mod product_type_tests {
-    use super::*;
-
-    #[test]
-    fn test_visit_product_type_table() {
-        let table = table!(
-            MyMessage,
-            [field!(message, String), field!(foo, Float64 = 2.0)]
-        );
-        let result = to_code(table);
-        assert!(!result.is_empty());
+impl ToTokens for IrType<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self {
+            IrType::Bool => quote!(bool),
+            IrType::Byte => quote!(i8),
+            IrType::UByte => quote!(u8),
+            IrType::Short => quote!(i16),
+            IrType::UShort => quote!(u16),
+            IrType::Int => quote!(i32),
+            IrType::UInt => quote!(u32),
+            IrType::Float => quote!(f32),
+            IrType::Long => quote!(i64),
+            IrType::ULong => quote!(u64),
+            IrType::Double => quote!(f64),
+            IrType::Int8 => quote!(i8),
+            IrType::UInt8 => quote!(u8),
+            IrType::Int16 => quote!(i16),
+            IrType::UInt16 => quote!(u16),
+            IrType::Int32 => quote!(i32),
+            IrType::UInt32 => quote!(u32),
+            IrType::Int64 => quote!(i64),
+            IrType::UInt64 => quote!(u64),
+            IrType::Float32 => quote!(f32),
+            IrType::Float64 => quote!(f64),
+            IrType::String => quote!(String),
+            IrType::Array(ty) => quote!(Vec<#ty>),
+            IrType::Custom(ty_ref) => {
+                let id = format_ident!("{}", ty_ref.ident.simple().as_ref().to_string());
+                quote!(#id)
+            }
+        }
+        .to_tokens(tokens)
     }
 }
 
-impl ToTokens for Type<'_> {
+impl ToTokens for IrEnumBaseType {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
-            Type::Bool => quote!(bool),
-            Type::Byte => quote!(i8),
-            Type::UByte => quote!(u8),
-            Type::Short => quote!(i16),
-            Type::UShort => quote!(u16),
-            Type::Int => quote!(i32),
-            Type::UInt => quote!(u32),
-            Type::Float => quote!(f32),
-            Type::Long => quote!(i64),
-            Type::ULong => quote!(u64),
-            Type::Double => quote!(f64),
-            Type::Int8 => quote!(i8),
-            Type::UInt8 => quote!(u8),
-            Type::Int16 => quote!(i16),
-            Type::UInt16 => quote!(u16),
-            Type::Int32 => quote!(i32),
-            Type::UInt32 => quote!(u32),
-            Type::Int64 => quote!(i64),
-            Type::UInt64 => quote!(u64),
-            Type::Float32 => quote!(f32),
-            Type::Float64 => quote!(f64),
-            Type::String => quote!(String),
-            Type::Array(ty) => quote!(Vec<#ty>),
-            Type::Ident(id) => quote!(#id),
+            IrEnumBaseType::Byte => quote!(i8),
+            IrEnumBaseType::UByte => quote!(u8),
+            IrEnumBaseType::Short => quote!(i16),
+            IrEnumBaseType::UShort => quote!(u16),
+            IrEnumBaseType::Int => quote!(i32),
+            IrEnumBaseType::UInt => quote!(u32),
+            IrEnumBaseType::Long => quote!(i64),
+            IrEnumBaseType::ULong => quote!(u64),
+            IrEnumBaseType::Int8 => quote!(i8),
+            IrEnumBaseType::UInt8 => quote!(u8),
+            IrEnumBaseType::Int16 => quote!(i16),
+            IrEnumBaseType::UInt16 => quote!(u16),
+            IrEnumBaseType::Int32 => quote!(i32),
+            IrEnumBaseType::UInt32 => quote!(u32),
+            IrEnumBaseType::Int64 => quote!(i64),
+            IrEnumBaseType::UInt64 => quote!(u64),
         }
         .to_tokens(tokens)
     }
@@ -386,15 +418,20 @@ mod type_tests {
 
     #[test]
     fn test_visit_type() {
-        let result = to_code(Type::Bool);
+        let result = to_code(IrType::Bool);
         let expected = "bool";
         assert_eq!(result, expected);
 
-        let result = to_code(Type::Array(Box::new(Type::String)));
+        let result = to_code(IrType::Array(Box::new(IrType::String)));
         let expected = "Vec < String >";
         assert_eq!(result, expected);
 
-        let result = to_code(Type::Ident(DottedIdent::from(vec!["MyType".into()])));
+        let result = to_code(IrType::Custom(
+            IrCustomTypeRef::builder()
+                .ident(IrDottedIdent::from("MyType"))
+                .ty(IrCustomType::Table)
+                .build(),
+        ));
         let expected = "MyType";
         assert_eq!(result, expected);
     }
@@ -433,11 +470,45 @@ impl ToTokens for Comment<'_> {
     }
 }
 
+impl ToTokens for IrNamespace<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ident = &self.ident.simple();
+        let nodes = &self.nodes;
+        (quote! {
+            pub mod #ident {
+                #(#nodes)*
+            }
+        })
+        .to_tokens(tokens)
+    }
+}
+
 impl ToTokens for DottedIdent<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let parts = &self.parts;
         debug_assert!(!self.parts.is_empty());
         let code = parts.iter().map(|e| e.raw).join("::");
+        let num_parts = parts.len();
+        let path_string = if num_parts > 1 {
+            format!(
+                "{}::{}",
+                std::iter::repeat("super").take(num_parts - 1).join("::"),
+                code
+            )
+        } else {
+            code
+        };
+        syn::parse_str::<syn::Path>(&path_string)
+            .expect("Cannot parse path")
+            .to_tokens(tokens)
+    }
+}
+
+impl ToTokens for IrDottedIdent<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let parts = &self.parts;
+        debug_assert!(!self.parts.is_empty());
+        let code = parts.iter().map(|e| e.raw.as_ref()).join("::");
         let num_parts = parts.len();
         let path_string = if num_parts > 1 {
             format!(
@@ -481,20 +552,21 @@ fn lit_int(value: impl Display, base_type: impl Spanned + Display) -> impl ToTok
 // TODO: Unions. Though see structs, because those overlap with unions in a way
 // that isn't clear to me ATM. It seems that unions can be enum-like or
 // struct-like depending on the element types.
-impl ToTokens for Enum<'_> {
+impl ToTokens for IrEnum<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self {
-            id: enum_id,
+            ident: enum_id,
             values,
             base_type,
             doc,
             ..
         } = self;
 
+        let enum_id = enum_id.simple();
         // generate enum variant name => string name of the variant for use in
         // a match statement
-        let names_to_strings = values.iter().map(|EnumVal { id: key, .. }| {
-            let raw_key = key.raw;
+        let names_to_strings = values.iter().map(|IrEnumVal { ident: key, .. }| {
+            let raw_key = key.raw.as_ref();
             quote! {
                 #enum_id::#key => #raw_key
             }
@@ -506,7 +578,7 @@ impl ToTokens for Enum<'_> {
             values
                 .iter()
                 .enumerate()
-                .map(|(i, EnumVal { id: key, value })| {
+                .map(|(i, IrEnumVal { ident: key, value })| {
                     // format the value with the correct type, i.e., base_type
                     let scalar_value = lit_int(
                         if let Some(constant) = *value {
@@ -519,7 +591,7 @@ impl ToTokens for Enum<'_> {
                     (quote!(#key), quote!(#scalar_value))
                 });
 
-        let raw_snake_enum_name = enum_id.raw.to_snake_case();
+        let raw_snake_enum_name = enum_id.raw.as_ref().to_snake_case();
         let enum_id_fn_name = format_ident!("enum_name_{}", raw_snake_enum_name);
 
         let from_base_to_enum_variants =
@@ -606,7 +678,7 @@ impl ToTokens for Enum<'_> {
 }
 
 // TODO: better error messages for things that aren't implemented
-impl ToTokens for Element<'_> {
+impl ToTokens for IrNode<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         // the following constructs are (or should be) handled at the file
         // level:
@@ -618,108 +690,27 @@ impl ToTokens for Element<'_> {
         // Additionally, attributes do not have corresponding concrete code
         // generated, they are used to *affect* codegen of other items.
         match self {
-            Element::Table(t) => t.to_tokens(tokens),
-            Element::Struct(_) => unimplemented!(),
-            Element::Enum(e) => e.to_tokens(tokens),
-
-            Element::Root(_) => unimplemented!(),
-            Element::FileExtension(_) => unimplemented!(),
-            Element::FileIdentifier(_) => unimplemented!(),
-            Element::Attribute(_) => unimplemented!(),
-            Element::Rpc(rpc) => rpc.to_tokens(tokens),
-            Element::Object(_) => unimplemented!(),
+            IrNode::Table(t) => t.to_tokens(tokens),
+            // Element::Struct(_) => unimplemented!(),
+            IrNode::Enum(e) => e.to_tokens(tokens),
+            IrNode::Namespace(n) => n.to_tokens(tokens),
+            // Element::Root(_) => unimplemented!(),
+            // Element::FileExtension(_) => unimplemented!(),
+            // Element::FileIdentifier(_) => unimplemented!(),
+            // Element::Attribute(_) => unimplemented!(),
+            // Element::Rpc(rpc) => rpc.to_tokens(tokens),
+            // Element::Object(_) => unimplemented!(),
             element => panic!("{:?}", element),
         }
     }
 }
 
-// TODO: actually open up a file
-// this will need some notion of a default include path to search for fbs
-// files.
-impl ToTokens for Include<'_> {
+impl ToTokens for IrRoot<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let Self { stem, doc, .. } = self;
-        let id = format_ident!("{}", stem);
+        let nodes = &self.nodes;
         (quote! {
-            #doc
-            use #id::*;
+            #(#nodes)*
         })
         .to_tokens(tokens)
-    }
-}
-
-// TODO:
-// * Root types
-// * File identifiers
-// * File extensions
-// * Parsing included files
-impl ToTokens for Schema<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let Self { includes, elements } = self;
-
-        // namespaces precede all of their contents, so track the current namespace and accumulate
-        // its change into the key of a map of namespace -> elements contained within that
-        // namespace.
-        let code = elements
-            .iter()
-            .scan((None, None), |ns_item_pair, element| {
-                *ns_item_pair = if element.is_namespace() {
-                    (element.namespace(), None)
-                } else {
-                    (ns_item_pair.0, Some(element))
-                };
-                Some(*ns_item_pair)
-            })
-            .filter(|(_, element)| element.is_some())
-            .into_group_map()
-            .into_iter()
-            // for each non-None namespace and elements contained within:
-            // reverse fold over the namespace pieces to generate nested modules:
-            // if namespace parts is [a, b, c]
-            // and body is struct Foo { ... }
-            // then
-            // reverse:
-            //   [c, b, a]
-            // fold:
-            //    init: struct Foo { ... }
-            //    next: pub mod c { struct Foo { ... } }
-            //    next: pub mod b { pub mod c { struct Foo { ... } } }
-            //   final: pub mod a { pub mod b { pub mod c { struct Foo { ... } } } }
-            .map(|(namespace, elements)| {
-                let base_body = quote! { #(#elements)* };
-                if let Some(Namespace { ident, doc }) = namespace {
-                    let nested =
-                        ident
-                            .parts
-                            .iter()
-                            .rev()
-                            .fold(base_body, |module_body, module_name| {
-                                quote! {
-                                    pub mod #module_name {
-                                        #module_body
-                                    }
-                                }
-                            });
-                    quote! {
-                        #doc
-                        #nested
-                    }
-                } else {
-                    base_body
-                }
-            });
-
-        (quote! {
-            #(#includes)*
-            #(#code)*
-        })
-        .to_tokens(tokens)
-    }
-}
-
-impl ToTokens for File<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let Self { schema, .. } = self;
-        schema.to_tokens(tokens)
     }
 }

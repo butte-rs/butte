@@ -1,3 +1,5 @@
 pub mod parser;
-pub mod parser_macros;
 pub mod types;
+
+#[cfg(test)]
+mod parser_macros;
