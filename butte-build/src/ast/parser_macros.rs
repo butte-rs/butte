@@ -19,7 +19,13 @@ mod single_value_tests {
         use crate::ast::types::*;
 
         let val = single_value!(1);
-        assert_eq!(val, Single::Scalar(Scalar::Integer(1)));
+        assert_eq!(val, Single::Scalar(Scalar::Integer(1i32.into())));
+
+        let val = single_value!(1);
+        assert_eq!(val, Single::Scalar(Scalar::Integer(1i64.into())));
+
+        let val = single_value!(1u64);
+        assert_eq!(val, Single::Scalar(Scalar::Integer(1u64.into())));
 
         let val = single_value!(1.0);
         assert_eq!(val, Single::Scalar(Scalar::Float(1.0)));
@@ -49,7 +55,13 @@ mod default_value_tests {
         use crate::ast::types::*;
 
         let val = default_value!(1);
-        assert_eq!(val, DefaultValue::Scalar(Scalar::Integer(1)));
+        assert_eq!(val, DefaultValue::Scalar(Scalar::Integer(1i32.into())));
+
+        let val = default_value!(1);
+        assert_eq!(val, DefaultValue::Scalar(Scalar::Integer(1i64.into())));
+
+        let val = default_value!(1u64);
+        assert_eq!(val, DefaultValue::Scalar(Scalar::Integer(1u64.into())));
 
         let val = default_value!(1.0);
         assert_eq!(val, DefaultValue::Scalar(Scalar::Float(1.0)));
@@ -109,7 +121,7 @@ mod value_macro_tests {
         assert_eq!(result, expected);
 
         let result = value!(1);
-        let expected = Value::Single(Single::Scalar(Scalar::Integer(1)));
+        let expected = Value::Single(Single::Scalar(Scalar::Integer(1.into())));
         assert_eq!(result, expected);
     }
 
@@ -134,7 +146,7 @@ mod value_macro_tests {
         let expected = Value::from(vec![
             (
                 Ident::from("a"),
-                Value::Single(Single::Scalar(Scalar::Integer(1))),
+                Value::Single(Single::Scalar(Scalar::Integer(1.into()))),
             ),
             (Ident::from("b"), Value::Single(Single::String("c"))),
         ]);
