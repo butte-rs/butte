@@ -1375,7 +1375,10 @@ mod value_tests {
     #[test]
     fn test_value_single_value() {
         let result = value_("1");
-        assert_successful_parse!(result, Value::Single(Single::Scalar(Scalar::Integer(1))));
+        assert_successful_parse!(
+            result,
+            Value::Single(Single::Scalar(Scalar::Integer(1.into())))
+        );
 
         let result = value_("2.3");
         assert_successful_parse!(result, val!(2.3));
@@ -1668,32 +1671,27 @@ mod dec_integer_constant_tests {
     #[test]
     fn test_dec_integer_constant() {
         let result = dec_integer_constant("1234");
-        assert_successful_parse!(result, 1234);
+        assert_successful_parse!(result, 1234.into());
 
         let result = dec_integer_constant("-1234");
-        assert_successful_parse!(result, -1234);
+        assert_successful_parse!(result, (-1234).into());
     }
 }
 
 pub fn hex_integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
-    map(
+    map_res(
         tuple((
             opt(plus_or_minus),
-            preceded(
-                zero,
-                preceded(
-                    one_of("xX"),
-                    map_res(hex_digit1, |value| {
-                        IntegerConstant::from_str_radix(value, 16)
-                    }),
-                ),
-            ),
+            preceded(zero, preceded(one_of("xX"), hex_digit1)),
         )),
-        |(sign, value)| {
+        |(sign, value)| -> Result<IntegerConstant> {
+            let int_const = IntegerConstant::from_str_radix(value, 16)?;
             if let Some('-') = sign {
-                -value
+                int_const
+                    .checked_neg()
+                    .ok_or_else(|| anyhow!("invalid value for negation {}", int_const))
             } else {
-                value
+                Ok(int_const)
             }
         },
     )(input)
@@ -1706,10 +1704,10 @@ mod hex_integer_constant_tests {
     #[test]
     fn test_hex_integer_constant() {
         let result = hex_integer_constant("0x1234ABCDEFabcdef");
-        assert_successful_parse!(result, 0x1234_ABCD_EFAB_CDEF);
+        assert_successful_parse!(result, 0x1234_ABCD_EFAB_CDEF_i64.into());
 
         let result = hex_integer_constant("-0x1234ABCDEFabcdef");
-        assert_successful_parse!(result, -0x1234_ABCD_EFAB_CDEF);
+        assert_successful_parse!(result, (-0x1234_ABCD_EFAB_CDEF_i64).into());
     }
 
     #[test]
@@ -2082,16 +2080,16 @@ mod integer_constant_tests {
     #[test]
     fn test_integer_constant() {
         let result = integer_constant("1234");
-        assert_successful_parse!(result, 1234);
+        assert_successful_parse!(result, 1234.into());
 
         let result = integer_constant("-1234");
-        assert_successful_parse!(result, -1234);
+        assert_successful_parse!(result, (-1234).into());
 
         let result = integer_constant("0x1234");
-        assert_successful_parse!(result, 0x1234);
+        assert_successful_parse!(result, 0x1234.into());
 
         let result = integer_constant("-0x1234");
-        assert_successful_parse!(result, -0x1234);
+        assert_successful_parse!(result, (-0x1234).into());
     }
 }
 
