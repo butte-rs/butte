@@ -15,6 +15,14 @@ table ManyHellosRequest {
   num_greetings: int;
 }
 
+union EitherHello {
+  HelloReply, HelloRequest
+}
+
+table EitherHelloRequest {
+  something: EitherHello;
+}
+
 namespace baz.buzz;
 
 table FooBar {

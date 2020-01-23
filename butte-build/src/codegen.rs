@@ -99,10 +99,31 @@ impl ToTokens for Scalar {
 /// Convert a `types::Type` to a type with the supplied wrapper for reference types
 fn to_type_token(
     ty: &IrType,
-    lifetime: impl ToTokens,
-    wrap_refs_types: impl ToTokens,
+    lifetime: &impl ToTokens,
+    wrap_refs_types: &impl ToTokens,
 ) -> impl ToTokens {
     match ty {
+        IrType::Bool => quote!(bool),
+        IrType::Byte => quote!(i8),
+        IrType::UByte => quote!(u8),
+        IrType::Short => quote!(i16),
+        IrType::UShort => quote!(u16),
+        IrType::Int => quote!(i32),
+        IrType::UInt => quote!(u32),
+        IrType::Float => quote!(f32),
+        IrType::Long => quote!(i64),
+        IrType::ULong => quote!(u64),
+        IrType::Double => quote!(f64),
+        IrType::Int8 => quote!(i8),
+        IrType::UInt8 => quote!(u8),
+        IrType::Int16 => quote!(i16),
+        IrType::UInt16 => quote!(u16),
+        IrType::Int32 => quote!(i32),
+        IrType::UInt32 => quote!(u32),
+        IrType::Int64 => quote!(i64),
+        IrType::UInt64 => quote!(u64),
+        IrType::Float32 => quote!(f32),
+        IrType::Float64 => quote!(f64),
         IrType::String => {
             let wrap_tokens = wrap_refs_types.into_token_stream();
             if wrap_tokens.is_empty() {
@@ -111,8 +132,25 @@ fn to_type_token(
                 quote!(#wrap_tokens::<&#lifetime str>)
             }
         }
-        // TODO other reference types?
-        _ => quote!(#ty),
+        IrType::Array(ty) => {
+            // Arrays wrap the wrapping tokens with Vector
+            let component_token = to_type_token(ty, lifetime, wrap_refs_types);
+            quote!(butte::Vector<#lifetime, #component_token>)
+        }
+        IrType::Custom(IrCustomTypeRef { ident, .. }) => {
+            // Scalar types are never wrapped and have no lifetimes
+            if ty.is_scalar() {
+                quote!(#ident)
+            } else {
+                let ty = quote!(#ident<#lifetime>);
+                let wrap_tokens = wrap_refs_types.into_token_stream();
+                if wrap_tokens.is_empty() {
+                    ty
+                } else {
+                    quote!(#wrap_tokens::<#ty>)
+                }
+            }
+        }
     }
 }
 
@@ -136,7 +174,7 @@ fn to_default_value_doc(ty: &IrType, default_value: &Option<DefaultValue<'_>>) -
             // Scalar field
             DefaultValue::Scalar(s) => s.to_token_stream().to_string(),
             // Enum field default variant
-            DefaultValue::Ident(i) => format!("{}::{}", quote!(#ty), i.raw),
+            DefaultValue::Ident(i) => format!("{}::{}", ty, i.raw),
         };
         let doc_string = format!(" The default value for this field is __{}__", doc_value);
         quote!(#[doc = #doc_string])
@@ -145,7 +183,7 @@ fn to_default_value_doc(ty: &IrType, default_value: &Option<DefaultValue<'_>>) -
     }
 }
 
-fn offset_id(field: &IrField) -> impl ToTokens {
+fn offset_id(field: &IrField<'_>) -> impl ToTokens {
     format_ident!("VT_{}", field.ident.as_ref().to_shouty_snake_case())
 }
 
@@ -179,7 +217,12 @@ impl ToTokens for IrTable<'_> {
                  default_value,
                  ..
              }| {
-                let arg_ty = to_type_token(ty, quote!('a), quote!(butte::WIPOffset));
+                let arg_ty = if ty.is_union() {
+                    quote!(butte::WIPOffset<butte::UnionWIPOffset>)
+                } else {
+                    let arg_ty = to_type_token(ty, &quote!('a), &quote!(butte::WIPOffset));
+                    quote!(#arg_ty)
+                };
                 // Scalar or enum fields can have a default value
                 let default_doc = to_default_value_doc(&ty, default_value);
                 quote! {
@@ -188,12 +231,21 @@ impl ToTokens for IrTable<'_> {
                 }
             },
         );
+        let args_lifetime = |lifetime_name| if fields
+            .iter()
+            .any(|f| !(f.ty.is_scalar() || f.ty.is_union()))
+        {
+            quote!(<#lifetime_name>)
+        } else {
+            quote!()
+        };
+        let args_lifetime_a = args_lifetime(quote!('a));
+        let args_lifetime_args = args_lifetime(quote!('args));
 
         let builder_type = format_ident!("{}Builder", raw_struct_name);
 
         // TODO: field accessors
         // TODO: check the impl of offset generation
-        // TODO: unions
         // TODO: testing this is going to be fun
         let field_nested_flatbuffers = fields.iter().filter_map(|IrField { ident: field_id, metadata, .. }| {
             let method_name = format_ident!("{}_nested_flatbuffer", field_id.raw.as_ref());
@@ -218,7 +270,14 @@ impl ToTokens for IrTable<'_> {
             let add_method_name = format_ident!("add_{}", field_id.raw.as_ref());
             let offset = offset_id(field);
             let field_offset = quote!(#struct_id::#offset);
-            let arg_ty = to_type_token(ty, quote!('_), quote!(butte::WIPOffset));
+
+            let arg_ty = if ty.is_union() {
+                quote!(butte::WIPOffset<butte::UnionWIPOffset>)
+            } else {
+                let arg_ty = to_type_token(ty, &quote!('_), &quote!(butte::WIPOffset));
+                quote!(#arg_ty)
+            };
+
             let body = if ty.is_scalar() {
                 if let Some(default_value) = default_value {
                     let default_value = to_default_value(&arg_ty, &default_value);
@@ -229,7 +288,7 @@ impl ToTokens for IrTable<'_> {
             } else {
                 quote!(self.fbb.push_slot_always::<#arg_ty>(#field_offset, #field_id))
             };
-            let arg_ty = to_type_token(ty, quote!('b), quote!(butte::WIPOffset));
+            //let arg_ty = to_type_token(ty, &quote!('b), &quote!(butte::WIPOffset));
             quote! {
                 #[inline]
                 fn #add_method_name(&mut self, #field_id: #arg_ty) {
@@ -239,7 +298,7 @@ impl ToTokens for IrTable<'_> {
         });
 
         let field_offset_constants = fields.iter().enumerate().map(|(index, field)| {
-            let offset_name = offset_id(&field);
+            let offset_name = offset_id(field);
             let offset_value = butte::field_index_to_field_offset(index as VOffsetT);
             quote! {
                 pub const #offset_name: butte::VOffsetT = #offset_value;
@@ -250,14 +309,59 @@ impl ToTokens for IrTable<'_> {
             let snake_name = format_ident!("{}", field.ident.as_ref().to_snake_case());
             let offset_name = offset_id(field);
             let ty = &field.ty;
-            let ty_simple_lifetime = to_type_token(ty, quote!('a), quote!());
-            let ty_wrapped = to_type_token(ty, quote!(), quote!(butte::ForwardsUOffset));
+            let ty_simple_lifetime = to_type_token(ty, &quote!('a), &quote!());
+            let ty_wrapped = to_type_token(ty, &quote!('a), &quote!(butte::ForwardsUOffset));
 
-            quote! {
-                #[inline]
-                pub fn #snake_name(&self) -> Result<Option<#ty_simple_lifetime>, butte::Error> {
-                    self.table
-                        .get::<#ty_wrapped>(#struct_id::#offset_name)
+            if ty.is_union() {
+                let (union_ident, enum_ident, variants) = match ty {
+                    IrType::Custom(IrCustomTypeRef {
+                        ty,
+                        ident: ref union_ident,
+                    }) => match ty {
+                        IrCustomType::Union {
+                            ref variants,
+                            ref enum_ident,
+                        } => (union_ident, enum_ident, variants),
+                        _ => panic!("type is union"),
+                    },
+                    _ => panic!("type is union"),
+                };
+
+                let enum_ident = enum_ident.simple();
+
+                let type_snake_name =
+                    format_ident!("{}_type", field.ident.as_ref().to_snake_case());
+
+                let names_to_enum_variant = variants.iter().map(
+                    |IrUnionVariant {
+                         ident: variant_ident,
+                         ty: variant_ty,
+                     }| {
+                        let variant_ty_wrapped =
+                            to_type_token(variant_ty, &quote!('a), &quote!(butte::ForwardsUOffset));
+                        quote! {
+                            Some(#enum_ident::#variant_ident) => self.table
+                                .get::<#variant_ty_wrapped>(#struct_id::#offset_name)?
+                                .map(#union_ident::#variant_ident)
+                        }
+                    },
+                );
+                quote! {
+                    #[inline]
+                    pub fn #snake_name(&self) -> Result<Option<#ty_simple_lifetime>, butte::Error> {
+                        Ok(match self.#type_snake_name()? {
+                          #(#names_to_enum_variant),*,
+                          None | Some(#enum_ident::None) => None
+                        })
+                    }
+                }
+            } else {
+                quote! {
+                    #[inline]
+                    pub fn #snake_name(&self) -> Result<Option<#ty_simple_lifetime>, butte::Error> {
+                        self.table
+                            .get::<#ty_wrapped>(#struct_id::#offset_name)
+                    }
                 }
             }
         });
@@ -290,7 +394,7 @@ impl ToTokens for IrTable<'_> {
             impl<'a> #struct_id<'a> {
                 pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr>(
                     fbb: &'mut_bldr mut butte::FlatBufferBuilder<'bldr>,
-                    args: &'args #args<'args>
+                    args: &'args #args#args_lifetime_args
                 ) -> butte::WIPOffset<#struct_id<'bldr>> {
                     let mut builder = #builder_type::new(fbb);
                     #(#builder_add_calls)*
@@ -320,8 +424,8 @@ impl ToTokens for IrTable<'_> {
             // Builder Args
             // TODO: Can't use this because we can mix fields that are
             // default-able with those that are not
-            pub struct #args<'a> {
-                #(#args_fields),*
+            pub struct #args#args_lifetime_a {
+                #(#args_fields),*,
             }
 
             //// builder
@@ -353,40 +457,13 @@ impl ToTokens for IrTable<'_> {
     }
 }
 
-impl ToTokens for IrType<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        match self {
-            IrType::Bool => quote!(bool),
-            IrType::Byte => quote!(i8),
-            IrType::UByte => quote!(u8),
-            IrType::Short => quote!(i16),
-            IrType::UShort => quote!(u16),
-            IrType::Int => quote!(i32),
-            IrType::UInt => quote!(u32),
-            IrType::Float => quote!(f32),
-            IrType::Long => quote!(i64),
-            IrType::ULong => quote!(u64),
-            IrType::Double => quote!(f64),
-            IrType::Int8 => quote!(i8),
-            IrType::UInt8 => quote!(u8),
-            IrType::Int16 => quote!(i16),
-            IrType::UInt16 => quote!(u16),
-            IrType::Int32 => quote!(i32),
-            IrType::UInt32 => quote!(u32),
-            IrType::Int64 => quote!(i64),
-            IrType::UInt64 => quote!(u64),
-            IrType::Float32 => quote!(f32),
-            IrType::Float64 => quote!(f64),
-            IrType::String => quote!(String),
-            IrType::Array(ty) => quote!(Vec<#ty>),
-            IrType::Custom(ty_ref) => {
-                let id = format_ident!("{}", ty_ref.ident.simple().as_ref().to_string());
-                quote!(#id)
-            }
-        }
-        .to_tokens(tokens)
-    }
-}
+// Do not implement
+// Left in the code to prevent a rogue impl
+// impl ToTokens for IrType<'_> {
+//     fn to_tokens(&self, _: &mut TokenStream) {
+//         panic!("This is unimplemented on purpose -- as types need context to be generated")
+//     }
+// }
 
 impl ToTokens for IrEnumBaseType {
     fn to_tokens(&self, tokens: &mut TokenStream) {
@@ -409,31 +486,6 @@ impl ToTokens for IrEnumBaseType {
             IrEnumBaseType::UInt64 => quote!(u64),
         }
         .to_tokens(tokens)
-    }
-}
-
-#[cfg(test)]
-mod type_tests {
-    use super::*;
-
-    #[test]
-    fn test_visit_type() {
-        let result = to_code(IrType::Bool);
-        let expected = "bool";
-        assert_eq!(result, expected);
-
-        let result = to_code(IrType::Array(Box::new(IrType::String)));
-        let expected = "Vec < String >";
-        assert_eq!(result, expected);
-
-        let result = to_code(IrType::Custom(
-            IrCustomTypeRef::builder()
-                .ident(IrDottedIdent::from("MyType"))
-                .ty(IrCustomType::Table)
-                .build(),
-        ));
-        let expected = "MyType";
-        assert_eq!(result, expected);
     }
 }
 
@@ -549,9 +601,6 @@ fn lit_int(value: impl Display, base_type: impl Spanned + Display) -> impl ToTok
     syn::LitInt::new(&stringified_int, base_type.span())
 }
 
-// TODO: Unions. Though see structs, because those overlap with unions in a way
-// that isn't clear to me ATM. It seems that unions can be enum-like or
-// struct-like depending on the element types.
 impl ToTokens for IrEnum<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self {
@@ -677,6 +726,66 @@ impl ToTokens for IrEnum<'_> {
     }
 }
 
+impl ToTokens for IrUnion<'_> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let Self {
+            ident: union_id,
+            enum_ident,
+            variants,
+            doc,
+            ..
+        } = self;
+
+        let union_id = union_id.simple();
+        let enum_id = enum_ident.simple();
+
+        // the union's body definition
+        let names_to_union_variant = variants.iter().map(
+            |IrUnionVariant {
+                 ident: variant_ident,
+                 ty: variant_ty,
+             }| {
+                let variant_ty_token = to_type_token(variant_ty, &quote!('a), &quote!());
+                quote! {
+                    #variant_ident(#variant_ty_token)
+                }
+            },
+        );
+
+        // generate union variant name => enum type name of the variant for use in
+        // a match statement
+        let names_to_enum_variant = variants.iter().map(
+            |IrUnionVariant {
+                 ident: variant_ident,
+                 ..
+             }| {
+                quote! {
+                    #union_id::#variant_ident(..) => #enum_id::#variant_ident
+                }
+            },
+        );
+
+        (quote! {
+            #[derive(Copy, Clone, Debug, PartialEq)]
+            #doc
+            pub enum #union_id<'a> {
+                #(#names_to_union_variant),*
+            }
+
+
+            impl #union_id<'_> {
+                pub fn get_type(&self) -> #enum_id {
+                    match self {
+                        #(#names_to_enum_variant),*,
+                    }
+                }
+            }
+
+        })
+        .to_tokens(tokens)
+    }
+}
+
 // TODO: better error messages for things that aren't implemented
 impl ToTokens for IrNode<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
@@ -693,6 +802,7 @@ impl ToTokens for IrNode<'_> {
             IrNode::Table(t) => t.to_tokens(tokens),
             // Element::Struct(_) => unimplemented!(),
             IrNode::Enum(e) => e.to_tokens(tokens),
+            IrNode::Union(u) => u.to_tokens(tokens),
             IrNode::Namespace(n) => n.to_tokens(tokens),
             // Element::Root(_) => unimplemented!(),
             // Element::FileExtension(_) => unimplemented!(),

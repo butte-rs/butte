@@ -183,6 +183,61 @@ impl<'a> IrType<'a> {
             _ => true,
         }
     }
+
+    pub fn is_union(&self) -> bool {
+        match self {
+            IrType::Custom(IrCustomTypeRef { ty, .. }) => match ty {
+                IrCustomType::Union { .. } => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    // For unions, we generate an enum type "companion" that's just a simple
+    // ubyte based enum with all the union variants, + None (default 0)
+    //
+    // This method lets us generate the companion type name from the union.
+    pub fn make_union_enum_type_companion(&self) -> Option<&IrDottedIdent<'a>> {
+        match self {
+            IrType::Custom(IrCustomTypeRef { ty, .. }) => match ty {
+                IrCustomType::Union { ref enum_ident, .. } => Some(enum_ident),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+}
+
+impl Display for IrType<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IrType::Bool => write!(f, "bool"),
+            IrType::Byte => write!(f, "i8"),
+            IrType::UByte => write!(f, "u8"),
+            IrType::Short => write!(f, "i16"),
+            IrType::UShort => write!(f, "u16"),
+            IrType::Int => write!(f, "i32"),
+            IrType::UInt => write!(f, "u32"),
+            IrType::Float => write!(f, "f32"),
+            IrType::Long => write!(f, "i64"),
+            IrType::ULong => write!(f, "u64"),
+            IrType::Double => write!(f, "f64"),
+            IrType::Int8 => write!(f, "i8"),
+            IrType::UInt8 => write!(f, "u8"),
+            IrType::Int16 => write!(f, "i16"),
+            IrType::UInt16 => write!(f, "u16"),
+            IrType::Int32 => write!(f, "i32"),
+            IrType::UInt32 => write!(f, "u32"),
+            IrType::Int64 => write!(f, "i64"),
+            IrType::UInt64 => write!(f, "u64"),
+            IrType::Float32 => write!(f, "f32"),
+            IrType::Float64 => write!(f, "f64"),
+            IrType::String => write!(f, "&str"),
+            IrType::Array(component) => write!(f, "[{}]", component),
+            IrType::Custom(IrCustomTypeRef { ident, .. }) => write!(f, "{}", ident),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
@@ -202,6 +257,7 @@ pub enum IrCustomType<'a> {
         base_type: IrEnumBaseType,
     },
     Union {
+        enum_ident: IrDottedIdent<'a>,
         variants: Vec<IrUnionVariant<'a>>,
     },
 }
@@ -267,6 +323,10 @@ impl<'a> std::convert::TryFrom<&Type<'a>> for IrEnumBaseType {
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct IrUnion<'a> {
     pub ident: IrDottedIdent<'a>,
+
+    // Ident of the enum "companion"
+    pub enum_ident: IrDottedIdent<'a>,
+
     pub variants: Vec<IrUnionVariant<'a>>,
 
     #[builder(default)]
@@ -297,6 +357,8 @@ pub struct IrEnumVal<'a> {
 pub struct IrUnionVariant<'a> {
     /// The type of the variant
     pub ty: IrType<'a>,
+    /// The ident of the variant, matching the companion enum's
+    pub ident: IrIdent<'a>,
 }
 
 /// An identifier
@@ -328,6 +390,12 @@ impl<'a> From<&'a str> for IrIdent<'a> {
         Self {
             raw: Cow::Borrowed(s),
         }
+    }
+}
+
+impl<'a> From<String> for IrIdent<'a> {
+    fn from(s: String) -> Self {
+        Self { raw: Cow::Owned(s) }
     }
 }
 
