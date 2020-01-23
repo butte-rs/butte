@@ -45,3 +45,6 @@ quote = "1.0.2"
 syn = "1.0.7"
 typed-builder = "0.4.0"
 structopt = "0.3.3"
+
+[dev-dependencies]
+pretty_assertions = "0.6.1"

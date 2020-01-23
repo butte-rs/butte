@@ -161,6 +161,61 @@ impl<'a> Type<'a> {
             _ => true,
         }
     }
+
+    pub fn is_union(&self) -> bool {
+        match self {
+            Type::Custom(CustomTypeRef { ty, .. }) => match ty {
+                CustomType::Union { .. } => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    // For unions, we generate an enum type "companion" that's just a simple
+    // ubyte based enum with all the union variants, + None (default 0)
+    //
+    // This method lets us generate the companion type name from the union.
+    pub fn make_union_enum_type_companion(&self) -> Option<&DottedIdent<'a>> {
+        match self {
+            Type::Custom(CustomTypeRef { ty, .. }) => match ty {
+                CustomType::Union { ref enum_ident, .. } => Some(enum_ident),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+}
+
+impl Display for Type<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Bool => write!(f, "bool"),
+            Type::Byte => write!(f, "i8"),
+            Type::UByte => write!(f, "u8"),
+            Type::Short => write!(f, "i16"),
+            Type::UShort => write!(f, "u16"),
+            Type::Int => write!(f, "i32"),
+            Type::UInt => write!(f, "u32"),
+            Type::Float => write!(f, "f32"),
+            Type::Long => write!(f, "i64"),
+            Type::ULong => write!(f, "u64"),
+            Type::Double => write!(f, "f64"),
+            Type::Int8 => write!(f, "i8"),
+            Type::UInt8 => write!(f, "u8"),
+            Type::Int16 => write!(f, "i16"),
+            Type::UInt16 => write!(f, "u16"),
+            Type::Int32 => write!(f, "i32"),
+            Type::UInt32 => write!(f, "u32"),
+            Type::Int64 => write!(f, "i64"),
+            Type::UInt64 => write!(f, "u64"),
+            Type::Float32 => write!(f, "f32"),
+            Type::Float64 => write!(f, "f64"),
+            Type::String => write!(f, "&str"),
+            Type::Array(component) => write!(f, "[{}]", component),
+            Type::Custom(CustomTypeRef { ident, .. }) => write!(f, "{}", ident),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
@@ -180,6 +235,7 @@ pub enum CustomType<'a> {
         base_type: EnumBaseType,
     },
     Union {
+        enum_ident: DottedIdent<'a>,
         variants: Vec<UnionVariant<'a>>,
     },
 }
@@ -242,6 +298,9 @@ impl<'a> std::convert::TryFrom<&ast::Type<'a>> for EnumBaseType {
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Union<'a> {
     pub ident: DottedIdent<'a>,
+    // Ident of the enum "companion"
+    pub enum_ident: DottedIdent<'a>,
+
     pub variants: Vec<UnionVariant<'a>>,
 
     #[builder(default)]
@@ -264,6 +323,8 @@ pub struct EnumVal<'a> {
 pub struct UnionVariant<'a> {
     /// The type of the variant
     pub ty: Type<'a>,
+    /// The ident of the variant, matching the companion enum's
+    pub ident: Ident<'a>,
 }
 
 /// An identifier
@@ -295,6 +356,12 @@ impl<'a> From<&'a str> for Ident<'a> {
         Self {
             raw: Cow::Borrowed(s),
         }
+    }
+}
+
+impl<'a> From<String> for Ident<'a> {
+    fn from(s: String) -> Self {
+        Self { raw: Cow::Owned(s) }
     }
 }
 

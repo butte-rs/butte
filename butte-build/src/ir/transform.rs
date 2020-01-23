@@ -1,5 +1,6 @@
 use crate::{ast::types as ast, ir::types as ir};
 use anyhow::{anyhow, Result};
+use heck::SnakeCase;
 use itertools::Itertools;
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
@@ -32,7 +33,7 @@ impl<'a> Builder<'a> {
             ast::Element::Struct(s) => self.new_struct(s, pos)?,
             ast::Element::Enum(e) => self.new_enum(e, pos)?,
             ast::Element::Union(u) => self.new_union(u, pos)?,
-            ast::Element::Root(..) => unimplemented!(),
+            ast::Element::Root(..) => true,
             ast::Element::FileExtension(..) => unimplemented!(),
             ast::Element::FileIdentifier(..) => unimplemented!(),
             ast::Element::Attribute(..) => unimplemented!(),
@@ -77,6 +78,21 @@ impl<'a> Builder<'a> {
         for f in &t.fields {
             let ty = self.try_type(&f.ty);
             if let Some(ty) = ty {
+                // If it's a union, push the enum type field first
+                if let Some(enum_ty_ident) = ty.make_union_enum_type_companion() {
+                    let ty = self
+                        .find_custom_type(enum_ty_ident.clone())
+                        .expect("Union enum type companion should be defined now");
+                    let ident = ir::Ident::from(format!("{}_type", &f.id.raw.to_snake_case()));
+                    let default_value = None;
+                    let doc = f.doc.clone();
+                    fields.push(ir::Field {
+                        ident,
+                        ty,
+                        default_value,
+                        doc,
+                    });
+                }
                 let ident = ir::Ident::from(&f.id);
                 let default_value = f.default_value.clone();
                 let doc = f.doc.clone();
@@ -207,8 +223,94 @@ impl<'a> Builder<'a> {
         Ok(true)
     }
 
-    fn new_union(&mut self, _u: &ast::Union<'a>, _pos: usize) -> Result<bool> {
-        unimplemented!();
+    fn new_union(&mut self, u: &ast::Union<'a>, pos: usize) -> Result<bool> {
+        let ident = &self.make_fully_qualified_ident(ir::Ident::from(u.id));
+
+        if let Some(CustomTypeStatus::Defined(..)) = self.types.get(ident) {
+            return Err(anyhow!("type already defined: {}", ident));
+        };
+
+        let mut variants = Vec::new();
+
+        // Make sure all references to custom types are resolved
+        for f in &u.values {
+            let ty = self.try_type(&ast::Type::Ident(ast::DottedIdent::from(vec![f.id])));
+            if let Some(ty) = ty {
+                let id = &f.id;
+                variants.push(ir::UnionVariant {
+                    ty,
+                    ident: ir::Ident::from(id),
+                });
+            } else {
+                // not satisfied yet, so we can't build the fields
+                // we will try after having seen all other types.
+                return Ok(false);
+            }
+        }
+
+        let doc = u.doc.clone();
+
+        // We generate an enum for this union which describes the different variants
+        let e = self.generate_enum_for_union(u)?;
+
+        self.types.insert(
+            ident.clone(),
+            CustomTypeStatus::Defined(ir::CustomType::Union {
+                enum_ident: e.ident.clone(),
+                variants: variants.clone(),
+            }),
+        );
+
+        let s = ir::Union {
+            ident: ident.clone(),
+            enum_ident: e.ident.clone(),
+            variants,
+            doc,
+        };
+
+        self.nodes
+            .insert(pos, vec![ir::Node::Enum(e), ir::Node::Union(s)]);
+
+        Ok(true)
+    }
+
+    fn generate_enum_for_union(&mut self, u: &ast::Union<'a>) -> Result<ir::Enum<'a>> {
+        let enum_ident = format!("{}Type", u.id.raw);
+        let ident = &self.make_fully_qualified_ident(ir::Ident::from(enum_ident));
+
+        if let Some(CustomTypeStatus::Defined(..)) = self.types.get(ident) {
+            return Err(anyhow!("type already defined: {}", ident));
+        };
+
+        // There's a max of 255 variants in a union in flatbuffers
+        // See https://github.com/google/flatbuffers/issues/4209
+        let base_type = ir::EnumBaseType::UByte;
+        let values: Vec<_> = std::iter::once(ir::EnumVal {
+            ident: ir::Ident::from("None"),
+            value: Some(0),
+        })
+        .chain(u.values.iter().map(|v| ir::EnumVal {
+            ident: ir::Ident::from(v.id),
+            value: None,
+        }))
+        .collect();
+
+        let doc = u.doc.clone();
+
+        self.types.insert(
+            ident.clone(),
+            CustomTypeStatus::Defined(ir::CustomType::Enum {
+                values: values.clone(),
+                base_type,
+            }),
+        );
+
+        Ok(ir::Enum {
+            ident: ident.clone(),
+            base_type,
+            values,
+            doc,
+        })
     }
 
     fn current_namespace(&self) -> Option<&ast::Namespace<'a>> {
@@ -263,15 +365,21 @@ impl<'a> Builder<'a> {
                     ir::DottedIdent::from(dotted_ident)
                 };
 
-                let ty = match self.types.get(&ident) {
-                    Some(CustomTypeStatus::TableDeclared) => ir::CustomType::Table,
-                    Some(CustomTypeStatus::Defined(ty)) => ty.clone(),
-                    _ => return None, // Type unsatisfied
-                };
-
-                ir::Type::Custom(ir::CustomTypeRef { ident, ty })
+                return self.find_custom_type(ident);
             }
         })
+    }
+
+    fn find_custom_type(&self, fully_qualified_ident: ir::DottedIdent<'a>) -> Option<ir::Type<'a>> {
+        let ident = fully_qualified_ident;
+
+        let ty = match self.types.get(&ident) {
+            Some(CustomTypeStatus::TableDeclared) => ir::CustomType::Table,
+            Some(CustomTypeStatus::Defined(ty)) => ty.clone(),
+            _ => return None, // Type unsatisfied
+        };
+
+        Some(ir::Type::Custom(ir::CustomTypeRef { ident, ty }))
     }
 
     pub fn build(schema: ast::Schema<'a>) -> Result<ir::Root<'a>> {
@@ -365,6 +473,8 @@ impl<'a> Builder<'a> {
 mod tests {
     use super::*;
     use crate::ir::types as ir;
+    use pretty_assertions::assert_eq;
+
     #[test]
     fn test_table_simple() {
         let input = "\
@@ -662,6 +772,235 @@ struct Vector3 {
                     ])
                     .build(),
             )],
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_union_single() {
+        let input = "\
+        table A {
+            message: string;
+        }
+        table B {
+            message: [ubyte];
+        }
+        union AorB {
+            A,
+            B
+        }
+        ";
+        let (_, schema) = crate::parser::schema_decl(input).unwrap();
+        let actual = Builder::build(schema).unwrap();
+        let expected = ir::Root {
+            nodes: vec![
+                ir::Node::Table(
+                    ir::Table::builder()
+                        .ident(ir::DottedIdent::from("A"))
+                        .fields(vec![ir::Field::builder()
+                            .ident(ir::Ident::from("message"))
+                            .ty(ir::Type::String)
+                            .build()])
+                        .build(),
+                ),
+                ir::Node::Table(
+                    ir::Table::builder()
+                        .ident(ir::DottedIdent::from("B"))
+                        .fields(vec![ir::Field::builder()
+                            .ident(ir::Ident::from("message"))
+                            .ty(ir::Type::Array(Box::new(ir::Type::UByte)))
+                            .build()])
+                        .build(),
+                ),
+                ir::Node::Enum(
+                    ir::Enum::builder()
+                        .ident(ir::DottedIdent::from("AorBType"))
+                        .base_type(ir::EnumBaseType::UByte)
+                        .values(vec![
+                            ir::EnumVal::builder()
+                                .ident(ir::Ident::from("None"))
+                                .value(Some(0))
+                                .build(),
+                            ir::EnumVal::builder().ident(ir::Ident::from("A")).build(),
+                            ir::EnumVal::builder().ident(ir::Ident::from("B")).build(),
+                        ])
+                        .build(),
+                ),
+                ir::Node::Union(
+                    ir::Union::builder()
+                        .ident(ir::DottedIdent::from("AorB"))
+                        .enum_ident(ir::DottedIdent::from("AorBType"))
+                        .variants(vec![
+                            ir::UnionVariant::builder()
+                                .ident(ir::Ident::from("A"))
+                                .ty(ir::Type::Custom(
+                                    ir::CustomTypeRef::builder()
+                                        .ident(ir::DottedIdent::from("A"))
+                                        .ty(ir::CustomType::Table)
+                                        .build(),
+                                ))
+                                .build(),
+                            ir::UnionVariant::builder()
+                                .ident(ir::Ident::from("B"))
+                                .ty(ir::Type::Custom(
+                                    ir::CustomTypeRef::builder()
+                                        .ident(ir::DottedIdent::from("B"))
+                                        .ty(ir::CustomType::Table)
+                                        .build(),
+                                ))
+                                .build(),
+                        ])
+                        .build(),
+                ),
+            ],
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_table_using_union() {
+        let input = "\
+        table A {
+            message: string;
+        }
+        table B {
+            message: [ubyte];
+        }
+        union AorB {
+            A,
+            B
+        }
+        table Z {
+            a_or_b: AorB;
+        }
+        ";
+        let (_, schema) = crate::parser::schema_decl(input).unwrap();
+        let actual = Builder::build(schema).unwrap();
+        let expected = ir::Root {
+            nodes: vec![
+                ir::Node::Table(
+                    ir::Table::builder()
+                        .ident(ir::DottedIdent::from("A"))
+                        .fields(vec![ir::Field::builder()
+                            .ident(ir::Ident::from("message"))
+                            .ty(ir::Type::String)
+                            .build()])
+                        .build(),
+                ),
+                ir::Node::Table(
+                    ir::Table::builder()
+                        .ident(ir::DottedIdent::from("B"))
+                        .fields(vec![ir::Field::builder()
+                            .ident(ir::Ident::from("message"))
+                            .ty(ir::Type::Array(Box::new(ir::Type::UByte)))
+                            .build()])
+                        .build(),
+                ),
+                ir::Node::Enum(
+                    ir::Enum::builder()
+                        .ident(ir::DottedIdent::from("AorBType"))
+                        .base_type(ir::EnumBaseType::UByte)
+                        .values(vec![
+                            ir::EnumVal::builder()
+                                .ident(ir::Ident::from("None"))
+                                .value(Some(0))
+                                .build(),
+                            ir::EnumVal::builder().ident(ir::Ident::from("A")).build(),
+                            ir::EnumVal::builder().ident(ir::Ident::from("B")).build(),
+                        ])
+                        .build(),
+                ),
+                ir::Node::Union(
+                    ir::Union::builder()
+                        .ident(ir::DottedIdent::from("AorB"))
+                        .enum_ident(ir::DottedIdent::from("AorBType"))
+                        .variants(vec![
+                            ir::UnionVariant::builder()
+                                .ident(ir::Ident::from("A"))
+                                .ty(ir::Type::Custom(
+                                    ir::CustomTypeRef::builder()
+                                        .ident(ir::DottedIdent::from("A"))
+                                        .ty(ir::CustomType::Table)
+                                        .build(),
+                                ))
+                                .build(),
+                            ir::UnionVariant::builder()
+                                .ident(ir::Ident::from("B"))
+                                .ty(ir::Type::Custom(
+                                    ir::CustomTypeRef::builder()
+                                        .ident(ir::DottedIdent::from("B"))
+                                        .ty(ir::CustomType::Table)
+                                        .build(),
+                                ))
+                                .build(),
+                        ])
+                        .build(),
+                ),
+                ir::Node::Table(
+                    ir::Table::builder()
+                        .ident(ir::DottedIdent::from("Z"))
+                        .fields(vec![
+                            // Synthetic union enum type!
+                            ir::Field::builder()
+                                .ident(ir::Ident::from("a_or_b_type"))
+                                .ty(ir::Type::Custom(
+                                    ir::CustomTypeRef::builder()
+                                        .ident(ir::DottedIdent::from("AorBType"))
+                                        .ty(ir::CustomType::Enum {
+                                            values: vec![
+                                                ir::EnumVal::builder()
+                                                    .ident(ir::Ident::from("None"))
+                                                    .value(Some(0))
+                                                    .build(),
+                                                ir::EnumVal::builder()
+                                                    .ident(ir::Ident::from("A"))
+                                                    .build(),
+                                                ir::EnumVal::builder()
+                                                    .ident(ir::Ident::from("B"))
+                                                    .build(),
+                                            ],
+                                            base_type: ir::EnumBaseType::UByte,
+                                        })
+                                        .build(),
+                                ))
+                                .build(),
+                            ir::Field::builder()
+                                .ident(ir::Ident::from("a_or_b"))
+                                .ty(ir::Type::Custom(
+                                    ir::CustomTypeRef::builder()
+                                        .ident(ir::DottedIdent::from("AorB"))
+                                        .ty(ir::CustomType::Union {
+                                            enum_ident: ir::DottedIdent::from("AorBType"),
+                                            variants: vec![
+                                                ir::UnionVariant {
+                                                    ty: ir::Type::Custom(
+                                                        ir::CustomTypeRef::builder()
+                                                            .ident(ir::DottedIdent::from("A"))
+                                                            .ty(ir::CustomType::Table)
+                                                            .build(),
+                                                    ),
+                                                    ident: ir::Ident::from("A"),
+                                                },
+                                                ir::UnionVariant {
+                                                    ty: ir::Type::Custom(
+                                                        ir::CustomTypeRef::builder()
+                                                            .ident(ir::DottedIdent::from("B"))
+                                                            .ty(ir::CustomType::Table)
+                                                            .build(),
+                                                    ),
+                                                    ident: ir::Ident::from("B"),
+                                                },
+                                            ],
+                                        })
+                                        .build(),
+                                ))
+                                .build(),
+                        ])
+                        .build(),
+                ),
+            ],
         };
 
         assert_eq!(actual, expected);
