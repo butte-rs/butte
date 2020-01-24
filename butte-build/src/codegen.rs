@@ -425,7 +425,7 @@ impl ToTokens for IrTable<'_> {
             // TODO: Can't use this because we can mix fields that are
             // default-able with those that are not
             pub struct #args#args_lifetime_a {
-                #(#args_fields),*,
+                #(#args_fields),*
             }
 
             //// builder

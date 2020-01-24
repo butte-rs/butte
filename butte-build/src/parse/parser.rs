@@ -1415,9 +1415,9 @@ pub fn product_type_body(input: &str) -> IResult<&str, ProductTypeTriple> {
         delimited(comment_or_space1, ident, comment_or_space0),
         terminated(metadata, comment_or_space0),
         delimited(
-            left_brace,
-            many1(delimited(comment_or_space0, field_decl, comment_or_space0)),
-            right_brace,
+            preceded(left_brace, comment_or_space0),
+            many0(delimited(comment_or_space0, field_decl, comment_or_space0)),
+            terminated(comment_or_space0, right_brace),
         ),
     ))(input)
 }
@@ -1455,6 +1455,24 @@ pub fn table_decl(input: &str) -> IResult<&str, Table> {
 #[cfg(test)]
 mod table_tests {
     use super::*;
+
+    #[test]
+    fn test_empty_table_no_spaces() {
+        let input = "table HelloReply {}";
+        let result = table_decl(input);
+        let expected = table!(HelloReply, []);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_empty_table() {
+        let input = "\
+table HelloReply {
+}";
+        let result = table_decl(input);
+        let expected = table!(HelloReply, []);
+        assert_successful_parse!(result, expected);
+    }
 
     #[test]
     fn test_table_with_required_field() {
