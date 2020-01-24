@@ -284,7 +284,7 @@ impl ToTokens for IrTable<'_> {
             let arg_ty = if ty.is_union() {
                 quote!(butte::WIPOffset<butte::UnionWIPOffset>)
             } else {
-                let arg_ty = to_type_token(ty, &quote!('_), &quote!(butte::WIPOffset), true);
+                let arg_ty = to_type_token(ty, &quote!('b), &quote!(butte::WIPOffset), true);
                 quote!(#arg_ty)
             };
 
