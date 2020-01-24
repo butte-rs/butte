@@ -1,5 +1,4 @@
 use crate::{ir::types::*, parse::types::*};
-
 use butte::VOffsetT;
 use heck::{ShoutySnakeCase, SnakeCase};
 use itertools::Itertools;
@@ -474,11 +473,11 @@ impl ToTokens for IrTable<'_> {
 
 // Do not implement
 // Left in the code to prevent a rogue impl
-// impl ToTokens for IrType<'_> {
-//     fn to_tokens(&self, _: &mut TokenStream) {
-//         panic!("This is unimplemented on purpose -- as types need context to be generated")
-//     }
-// }
+impl ToTokens for IrType<'_> {
+    fn to_tokens(&self, _: &mut TokenStream) {
+        panic!("This is unimplemented on purpose -- as types need context to be generated")
+    }
+}
 
 impl ToTokens for IrEnumBaseType {
     fn to_tokens(&self, tokens: &mut TokenStream) {
@@ -830,12 +829,58 @@ impl ToTokens for IrNode<'_> {
     }
 }
 
-impl ToTokens for IrRoot<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let nodes = &self.nodes;
-        (quote! {
-            #(#nodes)*
-        })
-        .to_tokens(tokens)
+pub struct CodeGenerator<'a> {
+    pub(crate) root: IrRoot<'a>,
+    pub(crate) rpc_gen: Option<Box<dyn RpcGenerator>>,
+}
+
+impl<'a> CodeGenerator<'a> {
+    pub fn build_token_stream(&mut self) -> TokenStream {
+        let mut token_stream = TokenStream::default();
+        self.build_tokens(&mut token_stream);
+        token_stream
     }
+
+    pub fn build_tokens(&mut self, tokens: &mut TokenStream) {
+        let mut rpc_gen = self.rpc_gen.take();
+        for node in &self.root.nodes {
+            self.node_to_tokens(node, &mut rpc_gen, tokens);
+        }
+    }
+
+    fn node_to_tokens(
+        &self,
+        node: &IrNode<'a>,
+        rpc_gen: &mut Option<Box<dyn RpcGenerator>>,
+        tokens: &mut TokenStream,
+    ) {
+        // the following constructs are (or should be) handled at the file
+        // level:
+        // * Namespaces
+        // * Root types
+        // * File extensions
+        // * File identifiers
+        //
+        // Additionally, attributes do not have corresponding concrete code
+        // generated, they are used to *affect* codegen of other items.
+        match node {
+            IrNode::Table(t) => t.to_tokens(tokens),
+            // IrNode::Struct(_) => unimplemented!(),
+            IrNode::Enum(e) => e.to_tokens(tokens),
+            IrNode::Union(u) => u.to_tokens(tokens),
+            IrNode::Namespace(n) => n.to_tokens(tokens),
+            IrNode::Rpc(rpc) => {
+                if let Some(gen) = rpc_gen {
+                    gen.generate(rpc, tokens)
+                }
+            }
+            element => panic!("{:?}", element),
+        }
+    }
+}
+
+pub trait RpcGenerator {
+    /// Generates a Rust interface or implementation for a service, writing the
+    /// result to the provided `token_stream`.
+    fn generate<'a>(&mut self, rpc: &IrRpc<'a>, token_stream: &mut TokenStream);
 }

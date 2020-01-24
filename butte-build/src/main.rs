@@ -38,5 +38,5 @@ fn main() -> anyhow::Result<()> {
         Box::new(std::io::stdout())
     };
 
-    compile_fbs_generic(opt.ugly, input, output)
+    compile_fbs_generic(opt.ugly, None, input, output)
 }

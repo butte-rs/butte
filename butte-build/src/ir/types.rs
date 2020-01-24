@@ -20,6 +20,7 @@ pub enum IrNode<'a> {
     Struct(IrStruct<'a>),
     Enum(IrEnum<'a>),
     Union(IrUnion<'a>),
+    Rpc(IrRpc<'a>),
     RootType(IrRootType<'a>),
 }
 
@@ -31,6 +32,7 @@ impl<'a> IrNode<'a> {
             IrNode::Struct(s) => &s.ident,
             IrNode::Enum(e) => &e.ident,
             IrNode::Union(u) => &u.ident,
+            IrNode::Rpc(r) => &r.ident,
             IrNode::RootType(..) => unimplemented!(),
         }
     }
@@ -334,6 +336,55 @@ pub struct IrUnion<'a> {
 
     #[builder(default)]
     pub doc: Comment<'a>,
+}
+
+/// An RPC service.
+#[derive(Debug, Clone, PartialEq, TypedBuilder)]
+pub struct IrRpc<'a> {
+    pub ident: IrDottedIdent<'a>,
+    pub methods: Vec<IrRpcMethod<'a>>,
+
+    #[builder(default)]
+    pub doc: Comment<'a>,
+}
+
+/// A method in an RPC service.
+#[derive(Debug, Clone, PartialEq, TypedBuilder)]
+pub struct IrRpcMethod<'a> {
+    /// The name of the method.
+    pub ident: IrIdent<'a>,
+
+    /// The request type of the method.
+    pub request_type: IrDottedIdent<'a>,
+
+    /// The response type of the method.
+    pub response_type: IrDottedIdent<'a>,
+
+    /// Method metadata.
+    #[builder(default)]
+    pub metadata: IrRpcMethodMetadata,
+
+    #[builder(default)]
+    pub doc: Comment<'a>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, TypedBuilder)]
+pub struct IrRpcMethodMetadata {
+    pub streaming: IrRpcStreaming,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum IrRpcStreaming {
+    None,
+    Client,
+    Server,
+    Bidi,
+}
+
+impl Default for IrRpcStreaming {
+    fn default() -> Self {
+        IrRpcStreaming::None
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
