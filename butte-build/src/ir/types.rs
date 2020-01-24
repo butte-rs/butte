@@ -20,6 +20,7 @@ pub enum Node<'a> {
     Struct(Struct<'a>),
     Enum(Enum<'a>),
     Union(Union<'a>),
+    Rpc(Rpc<'a>),
 }
 
 impl<'a> Node<'a> {
@@ -30,6 +31,7 @@ impl<'a> Node<'a> {
             Node::Struct(s) => &s.ident,
             Node::Enum(e) => &e.ident,
             Node::Union(u) => &u.ident,
+            Node::Rpc(r) => &r.ident,
         }
     }
 
@@ -305,6 +307,63 @@ pub struct Union<'a> {
 
     #[builder(default)]
     pub doc: ast::Comment<'a>,
+}
+
+/// An RPC service.
+#[derive(Debug, Clone, PartialEq, TypedBuilder)]
+pub struct Rpc<'a> {
+    pub ident: DottedIdent<'a>,
+    pub methods: Vec<RpcMethod<'a>>,
+
+    #[builder(default)]
+    pub doc: ast::Comment<'a>,
+}
+
+/// A method in an RPC service.
+#[derive(Debug, Clone, PartialEq, TypedBuilder)]
+pub struct RpcMethod<'a> {
+    /// The name of the method.
+    pub ident: Ident<'a>,
+
+    /// The snake name of the method.
+    pub snake_ident: Ident<'a>,
+
+    /// The request type of the method.
+    pub request_type: DottedIdent<'a>,
+
+    /// The response type of the method.
+    pub response_type: DottedIdent<'a>,
+
+    /// Method metadata.
+    #[builder(default)]
+    pub metadata: RpcMethodMetadata,
+
+    #[builder(default)]
+    pub doc: ast::Comment<'a>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, TypedBuilder)]
+pub struct RpcMethodMetadata {
+    pub streaming: RpcStreaming,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RpcStreaming {
+    None,
+    Client,
+    Server,
+    Bidi,
+}
+
+impl Default for RpcStreaming {
+    fn default() -> Self {
+        RpcStreaming::None
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RootType<'a> {
+    _phantom: &'a (),
 }
 
 /// Type for `Enum` values.

@@ -493,27 +493,6 @@ impl ToTokens for ir::EnumBaseType {
     }
 }
 
-// TODO: Properly implement this.
-// We only generate a trait method right now.
-// TODO: Figure out how this will integrate into tonic.
-impl ToTokens for ast::RpcMethod<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let Self {
-            id,
-            request_type,
-            response_type,
-            doc,
-            ..
-        } = self;
-        let snake_name = format_ident!("{}", id.raw.to_snake_case());
-        (quote! {
-            #doc
-            fn #snake_name(request: #request_type) -> #response_type;
-        })
-        .to_tokens(tokens)
-    }
-}
-
 impl ToTokens for ast::Comment<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let doc = self.lines.iter().rev().fold(quote!(), |docs, line| {
@@ -523,19 +502,6 @@ impl ToTokens for ast::Comment<'_> {
             }
         });
         doc.to_tokens(tokens)
-    }
-}
-
-impl ToTokens for ir::Namespace<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let ident = &self.ident.simple();
-        let nodes = &self.nodes;
-        (quote! {
-            pub mod #ident {
-                #(#nodes)*
-            }
-        })
-        .to_tokens(tokens)
     }
 }
 
@@ -578,25 +544,6 @@ impl ToTokens for ir::DottedIdent<'_> {
         syn::parse_str::<syn::Path>(&path_string)
             .expect("Cannot parse path")
             .to_tokens(tokens)
-    }
-}
-
-// TODO: This is woefully incomplete
-impl ToTokens for ast::Rpc<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let Self {
-            id: ast::Ident { raw },
-            methods,
-            doc,
-        } = self;
-        let service_name = format_ident!("{}Service", raw);
-        (quote! {
-            #doc
-            pub trait #service_name {
-                #(#methods)*
-            }
-        })
-        .to_tokens(tokens)
     }
 }
 
@@ -790,9 +737,31 @@ impl ToTokens for ir::Union<'_> {
     }
 }
 
-// TODO: better error messages for things that aren't implemented
-impl ToTokens for ir::Node<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
+pub struct CodeGenerator<'a> {
+    pub(crate) root: ir::Root<'a>,
+    pub(crate) rpc_gen: Option<Box<dyn RpcGenerator>>,
+}
+
+impl<'a> CodeGenerator<'a> {
+    pub fn build_token_stream(&mut self) -> TokenStream {
+        let mut token_stream = TokenStream::default();
+        self.build_tokens(&mut token_stream);
+        token_stream
+    }
+
+    pub fn build_tokens(&mut self, tokens: &mut TokenStream) {
+        let mut rpc_gen = self.rpc_gen.take();
+        for node in &self.root.nodes {
+            self.node_to_tokens(node, &mut rpc_gen, tokens);
+        }
+    }
+
+    fn node_to_tokens(
+        &self,
+        node: &ir::Node<'a>,
+        rpc_gen: &mut Option<Box<dyn RpcGenerator>>,
+        tokens: &mut TokenStream,
+    ) {
         // the following constructs are (or should be) handled at the file
         // level:
         // * Namespaces
@@ -802,29 +771,36 @@ impl ToTokens for ir::Node<'_> {
         //
         // Additionally, attributes do not have corresponding concrete code
         // generated, they are used to *affect* codegen of other items.
-        match self {
+        match node {
             ir::Node::Table(t) => t.to_tokens(tokens),
-            // Element::Struct(_) => unimplemented!(),
+            // ir::Node::Struct(_) => unimplemented!(),
             ir::Node::Enum(e) => e.to_tokens(tokens),
             ir::Node::Union(u) => u.to_tokens(tokens),
-            ir::Node::Namespace(n) => n.to_tokens(tokens),
-            // Element::Root(_) => unimplemented!(),
-            // Element::FileExtension(_) => unimplemented!(),
-            // Element::FileIdentifier(_) => unimplemented!(),
-            // Element::Attribute(_) => unimplemented!(),
-            // Element::Rpc(rpc) => rpc.to_tokens(tokens),
-            // Element::Object(_) => unimplemented!(),
+            ir::Node::Namespace(n) => {
+                let ident = &n.ident.simple();
+                let mut nodes_ts = TokenStream::default();
+                for node in &n.nodes {
+                    self.node_to_tokens(node, rpc_gen, &mut nodes_ts);
+                }
+                (quote! {
+                    pub mod #ident {
+                        #nodes_ts
+                    }
+                })
+                .to_tokens(tokens)
+            }
+            ir::Node::Rpc(rpc) => {
+                if let Some(gen) = rpc_gen {
+                    gen.generate(rpc, tokens)
+                }
+            }
             element => panic!("{:?}", element),
         }
     }
 }
 
-impl ToTokens for ir::Root<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let nodes = &self.nodes;
-        (quote! {
-            #(#nodes)*
-        })
-        .to_tokens(tokens)
-    }
+pub trait RpcGenerator {
+    /// Generates a Rust interface or implementation for a service, writing the
+    /// result to the provided `token_stream`.
+    fn generate<'a>(&mut self, rpc: &ir::Rpc<'a>, token_stream: &mut TokenStream);
 }
