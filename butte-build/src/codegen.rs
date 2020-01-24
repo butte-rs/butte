@@ -101,6 +101,7 @@ fn to_type_token(
     ty: &ir::Type,
     lifetime: &impl ToTokens,
     wrap_refs_types: &impl ToTokens,
+    wrap_outer: bool,
 ) -> impl ToTokens {
     match ty {
         ir::Type::Bool => quote!(bool),
@@ -126,7 +127,7 @@ fn to_type_token(
         ir::Type::Float64 => quote!(f64),
         ir::Type::String => {
             let wrap_tokens = wrap_refs_types.into_token_stream();
-            if wrap_tokens.is_empty() {
+            if wrap_tokens.is_empty() || !wrap_outer {
                 quote!(&#lifetime str)
             } else {
                 quote!(#wrap_tokens::<&#lifetime str>)
@@ -134,8 +135,15 @@ fn to_type_token(
         }
         ir::Type::Array(ty) => {
             // Arrays wrap the wrapping tokens with Vector
-            let component_token = to_type_token(ty, lifetime, wrap_refs_types);
-            quote!(butte::Vector<#lifetime, #component_token>)
+            let component_token = to_type_token(ty, lifetime, wrap_refs_types, true);
+            let ty = quote!(butte::Vector<#lifetime, #component_token>);
+
+            let wrap_tokens = wrap_refs_types.into_token_stream();
+            if wrap_tokens.is_empty() || !wrap_outer {
+                ty
+            } else {
+                quote!(#wrap_tokens::<#ty>)
+            }
         }
         ir::Type::Custom(ir::CustomTypeRef { ident, .. }) => {
             // Scalar types are never wrapped and have no lifetimes
@@ -144,7 +152,7 @@ fn to_type_token(
             } else {
                 let ty = quote!(#ident<#lifetime>);
                 let wrap_tokens = wrap_refs_types.into_token_stream();
-                if wrap_tokens.is_empty() {
+                if wrap_tokens.is_empty() || !wrap_outer {
                     ty
                 } else {
                     quote!(#wrap_tokens::<#ty>)
@@ -226,7 +234,7 @@ impl ToTokens for ir::Table<'_> {
                 let arg_ty = if ty.is_union() {
                     quote!(butte::WIPOffset<butte::UnionWIPOffset>)
                 } else {
-                    let arg_ty = to_type_token(ty, &quote!('a), &quote!(butte::WIPOffset));
+                    let arg_ty = to_type_token(ty, &quote!('a), &quote!(butte::WIPOffset), true);
                     quote!(#arg_ty)
                 };
                 // Scalar or enum fields can have a default value
@@ -268,7 +276,7 @@ impl ToTokens for ir::Table<'_> {
             let arg_ty = if ty.is_union() {
                 quote!(butte::WIPOffset<butte::UnionWIPOffset>)
             } else {
-                let arg_ty = to_type_token(ty, &quote!('_), &quote!(butte::WIPOffset));
+                let arg_ty = to_type_token(ty, &quote!('_), &quote!(butte::WIPOffset), true);
                 quote!(#arg_ty)
             };
 
@@ -303,8 +311,9 @@ impl ToTokens for ir::Table<'_> {
             let snake_name = format_ident!("{}", field.ident.as_ref().to_snake_case());
             let offset_name = offset_id(field);
             let ty = &field.ty;
-            let ty_simple_lifetime = to_type_token(ty, &quote!('a), &quote!());
-            let ty_wrapped = to_type_token(ty, &quote!('a), &quote!(butte::ForwardsUOffset));
+            let ty_simple_lifetime =
+                to_type_token(ty, &quote!('a), &quote!(butte::ForwardsUOffset), false);
+            let ty_wrapped = to_type_token(ty, &quote!('a), &quote!(butte::ForwardsUOffset), true);
 
             if ty.is_union() {
                 let (union_ident, enum_ident, variants) = match ty {
@@ -331,8 +340,12 @@ impl ToTokens for ir::Table<'_> {
                          ident: variant_ident,
                          ty: variant_ty,
                      }| {
-                        let variant_ty_wrapped =
-                            to_type_token(variant_ty, &quote!('a), &quote!(butte::ForwardsUOffset));
+                        let variant_ty_wrapped = to_type_token(
+                            variant_ty,
+                            &quote!('a),
+                            &quote!(butte::ForwardsUOffset),
+                            true,
+                        );
                         quote! {
                             Some(#enum_ident::#variant_ident) => self.table
                                 .get::<#variant_ty_wrapped>(#struct_id::#offset_name)?
@@ -736,7 +749,7 @@ impl ToTokens for ir::Union<'_> {
                  ident: variant_ident,
                  ty: variant_ty,
              }| {
-                let variant_ty_token = to_type_token(variant_ty, &quote!('a), &quote!());
+                let variant_ty_token = to_type_token(variant_ty, &quote!('a), &quote!(), false);
                 quote! {
                     #variant_ident(#variant_ty_token)
                 }

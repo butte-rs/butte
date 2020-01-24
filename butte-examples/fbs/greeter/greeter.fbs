@@ -23,18 +23,24 @@ table EitherHelloRequest {
   something: EitherHello;
 }
 
-namespace baz.buzz;
-
-table FooBar {
-  name: string;
-  my_foo: Foo = A;
+table HelloRequestArray {
+  requests: [HelloRequest];
 }
+
+namespace baz.buzz;
 
 enum Foo : int32 {
   A,
   B,
   C
 }
+
+table FooBar {
+  name: string;
+  my_foo: Foo = A;
+}
+
+
 
 /// A greeter service!
 /// ... with a multiline doc comment?!
