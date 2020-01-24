@@ -358,7 +358,7 @@ impl<'a> IrBuilder<'a> {
             Type::Int => IrType::Int,
             Type::UInt => IrType::UInt,
             Type::Float => IrType::Float,
-            Type::Long => IrType::Float,
+            Type::Long => IrType::Long,
             Type::ULong => IrType::ULong,
             Type::Double => IrType::Double,
             Type::Int8 => IrType::Int8,
