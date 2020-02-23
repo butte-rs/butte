@@ -77,6 +77,14 @@ impl<'a> Builder<'a> {
         for f in &t.fields {
             let ty = self.try_type(&f.ty);
             if let Some(ty) = ty {
+                let required = match &f.metadata {
+                    Some(m) => match m.values.get(&ast::Ident::from("required")) {
+                        Some(None) => true,
+                        _ => false,
+                    },
+                    None => false,
+                };
+
                 // If it's a union, push the enum type field first
                 if let Some(enum_ty_ident) = ty.make_union_enum_type_companion() {
                     let ty = self
@@ -84,22 +92,26 @@ impl<'a> Builder<'a> {
                         .expect("Union enum type companion should be defined now");
                     let ident = ir::Ident::from(format!("{}_type", &f.id.raw.to_snake_case()));
                     let default_value = None;
+                    let metadata = ir::FieldMetadata::builder().required(required).build();
                     let doc = f.doc.clone();
                     fields.push(ir::Field {
                         ident,
                         ty,
                         default_value,
+                        metadata,
                         doc,
                     });
                 }
                 let ident = ir::Ident::from(&f.id);
                 let default_value = f.default_value.clone();
+                let metadata = ir::FieldMetadata::builder().required(required).build();
                 let doc = f.doc.clone();
 
                 fields.push(ir::Field {
                     ident,
                     ty,
                     default_value,
+                    metadata,
                     doc,
                 });
             } else {
@@ -155,12 +167,14 @@ impl<'a> Builder<'a> {
 
                 let ident = ir::Ident::from(&f.id);
                 let default_value = f.default_value.clone();
+                let metadata = ir::FieldMetadata::default();
                 let doc = f.doc.clone();
 
                 fields.push(ir::Field {
                     ident,
                     ty,
                     default_value,
+                    metadata,
                     doc,
                 });
             } else {
@@ -702,6 +716,31 @@ table HelloReply {
                         .build(),
                 ),
             ],
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_table_required_field() {
+        let input = "\
+table HelloMsg {
+    message: string (required);
+}
+";
+        let (_, schema) = crate::parser::schema_decl(input).unwrap();
+        let actual = Builder::build(schema).unwrap();
+        let expected = ir::Root {
+            nodes: vec![ir::Node::Table(
+                ir::Table::builder()
+                    .ident(ir::DottedIdent::from("HelloMsg"))
+                    .fields(vec![ir::Field::builder()
+                        .ident(ir::Ident::from("message"))
+                        .ty(ir::Type::String)
+                        .metadata(ir::FieldMetadata::builder().required(true).build())
+                        .build()])
+                    .build(),
+            )],
         };
 
         assert_eq!(actual, expected);

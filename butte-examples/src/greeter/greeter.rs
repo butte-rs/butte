@@ -7,32 +7,39 @@ pub mod greeter {
 
 fn main() -> Result<()> {
     use greeter::foo::bar::{
-        EitherHello, EitherHelloRequest, EitherHelloRequestArgs, EitherHelloType, HelloRequest,
-        HelloRequestArgs,
+        EitherHello, EitherHelloRequest, EitherHelloRequestArgs, EitherHelloType, HelloReply,
+        HelloReplyArgs, HelloRequest, HelloRequestArgs,
     };
     let mut builder = fb::FlatBufferBuilder::new();
-    let raw_name = "A Name";
-    let name = builder.create_string(raw_name);
+    let name = builder.create_string("John");
     let args = HelloRequestArgs { name };
     let req = HelloRequest::create(&mut builder, &args);
     builder.finish_minimal(req);
     let raw_bytes = builder.finished_data();
     let root = HelloRequest::get_root(raw_bytes)?;
     let dname = root.name()?;
-    let expected = Some(raw_name);
+    let expected = "John";
     if dname != expected {
         return Err(anyhow!("Expected {:?}, got {:?}", expected, dname));
     }
 
     let mut builder = fb::FlatBufferBuilder::new();
-    let raw_name = "Another Name";
-    let name = builder.create_string(raw_name);
-    let args = HelloRequestArgs { name };
-    let req = HelloRequest::create(&mut builder, &args);
+    let name = builder.create_string("Jane");
+    let message = builder.create_string("Wassup Jane");
+
+    let req = HelloRequest::create(&mut builder, &HelloRequestArgs { name });
+    let reply = HelloReply::create(
+        &mut builder,
+        &HelloReplyArgs {
+            message: Some(message),
+        },
+    );
 
     let args = EitherHelloRequestArgs {
         something_type: EitherHelloType::HelloRequest,
-        something: req.as_union_value(),
+        something: Some(req.as_union_value()),
+        something_required_type: EitherHelloType::HelloReply,
+        something_required: reply.as_union_value(),
     };
 
     let req = EitherHelloRequest::create(&mut builder, &args);
@@ -45,9 +52,21 @@ fn main() -> Result<()> {
     match req_union {
         Some(EitherHello::HelloRequest(req)) => {
             let dname = req.name()?;
-            let expected = Some(raw_name);
+            let expected = "Jane";
             if dname != expected {
                 return Err(anyhow!("Expected {:?}, got {:?}", expected, dname));
+            }
+        }
+        ty => panic!("expected hello request variant, got {:?}", ty),
+    };
+
+    let req_union = root.something_required()?;
+    match req_union {
+        EitherHello::HelloReply(reply) => {
+            let dmessage = reply.message()?;
+            let expected = Some("Wassup Jane");
+            if dmessage != expected {
+                return Err(anyhow!("Expected {:?}, got {:?}", expected, dmessage));
             }
         }
         ty => panic!("expected hello request variant, got {:?}", ty),
@@ -61,10 +80,9 @@ fn main() -> Result<()> {
 
     use greeter::baz::buzz::{Foo, FooBar, FooBarArgs};
     let mut builder = fb::FlatBufferBuilder::new();
-    let raw_name = "A Name";
-    let name = builder.create_string(raw_name);
+    let name = builder.create_string("Joe");
     let args = FooBarArgs {
-        name,
+        name: Some(name),
         my_foo: Foo::B,
     };
     let req = FooBar::create(&mut builder, &args);

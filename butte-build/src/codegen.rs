@@ -102,7 +102,7 @@ fn to_type_token(
     lifetime: &impl ToTokens,
     wrap_refs_types: &impl ToTokens,
     wrap_outer: bool,
-) -> impl ToTokens {
+) -> proc_macro2::TokenStream {
     match ty {
         ir::Type::Bool => quote!(bool),
         ir::Type::Byte => quote!(i8),
@@ -219,11 +219,21 @@ impl ToTokens for ir::Table<'_> {
 
         let builder_add_calls = fields.iter().map(
             |ir::Field {
-                 ident: field_id, ..
+                 ident: field_id,
+                 ty,
+                 metadata,
+                 ..
              }| {
                 let raw_field_name = field_id.raw.as_ref();
                 let add_field_method = format_ident!("add_{}", raw_field_name);
-                quote!(builder.#add_field_method(args.#field_id);)
+
+                if metadata.required || ty.is_scalar() {
+                    quote!(builder.#add_field_method(args.#field_id);)
+                } else {
+                    quote! {
+                        if let Some(x) = args.#field_id { builder.#add_field_method(x); }
+                    }
+                }
             },
         );
 
@@ -233,6 +243,7 @@ impl ToTokens for ir::Table<'_> {
                  ident: field_id,
                  ty,
                  default_value,
+                 metadata,
                  ..
              }| {
                 let arg_ty = if ty.is_union() {
@@ -240,6 +251,12 @@ impl ToTokens for ir::Table<'_> {
                 } else {
                     let arg_ty = to_type_token(ty, &quote!('a), &quote!(butte::WIPOffset), true);
                     quote!(#arg_ty)
+                };
+
+                let arg_ty = if metadata.required || ty.is_scalar() {
+                    arg_ty
+                } else {
+                    quote!(Option<#arg_ty>)
                 };
                 // Scalar or enum fields can have a default value
                 let default_doc = to_default_value_doc(&ty, default_value);
@@ -262,10 +279,65 @@ impl ToTokens for ir::Table<'_> {
         let args_lifetime_a = args_lifetime(quote!('a));
         let args_lifetime_args = args_lifetime(quote!('args));
 
+        // Can we implement `Default` on this table?
+        // True if all the fields are either scalar or optional
+        // Scalar fields must always implement `Default`
+        let args_can_derive_default = fields
+            .iter()
+            .all(|field| !field.metadata.required || field.ty.is_scalar());
+
+        let args_default_impl = if args_can_derive_default {
+            let args_fields_defaults = fields.iter().map(
+                |ir::Field {
+                     ident: field_id,
+                     ty,
+                     default_value,
+                     ..
+                 }| {
+                    let arg_ty = to_type_token(ty, &quote!(), &quote!(), false);
+                    if !ty.is_scalar() {
+                        // optional non-scalar types default to None
+                        quote!(#field_id: None)
+                    } else if let Some(default_value) = default_value {
+                        // Handle customized default values
+                        if ty.is_enum() {
+                            let default_name = if let ast::DefaultValue::Ident(i) = default_value {
+                                format_ident!("{}", i.raw)
+                            } else {
+                                panic!("expecting default ident for enum")
+                            };
+                            quote!(#field_id: <#arg_ty>::#default_name)
+                        }
+                        // TODO: handle structs
+                        else {
+                            // numeric types
+                            let default_val = match default_value {
+                                ast::DefaultValue::Scalar(s) => quote!(#s),
+                                _ => panic!("expecting numeric default"),
+                            };
+                            quote!(#field_id: #default_val)
+                        }
+                    } else {
+                        // no custom default value, default to the scalar type's default
+                        quote!(#field_id: <#arg_ty>::default())
+                    }
+                },
+            );
+            quote! {
+                impl#args_lifetime_a Default for #args#args_lifetime_a {
+                    fn default() -> Self {
+                        Self {
+                            #(#args_fields_defaults),*
+                        }
+                    }
+                }
+            }
+        } else {
+            quote!()
+        };
+
         let builder_type = format_ident!("{}Builder", raw_struct_name);
 
-        // TODO: check the impl of offset generation
-        // TODO: testing this is going to be fun
         let builder_field_methods = fields.iter().map(|field| {
             let ir::Field {
                 ident: field_id,
@@ -294,7 +366,7 @@ impl ToTokens for ir::Table<'_> {
             } else {
                 quote!(self.fbb.push_slot_always::<#arg_ty>(#field_offset, #field_id))
             };
-            //let arg_ty = to_type_token(ty, &quote!('b), &quote!(butte::WIPOffset));
+
             quote! {
                 #[inline]
                 fn #add_method_name(&mut self, #field_id: #arg_ty) {
@@ -313,10 +385,10 @@ impl ToTokens for ir::Table<'_> {
 
         let field_accessors = fields.iter().map(|field| {
             let snake_name = format_ident!("{}", field.ident.as_ref().to_snake_case());
+            let snake_name_str = snake_name.to_string();
             let offset_name = offset_id(field);
             let ty = &field.ty;
-            let ty_simple_lifetime =
-                to_type_token(ty, &quote!('a), &quote!(butte::ForwardsUOffset), false);
+            let ty_ret = to_type_token(ty, &quote!('a), &quote!(butte::ForwardsUOffset), false);
             let ty_wrapped = to_type_token(ty, &quote!('a), &quote!(butte::ForwardsUOffset), true);
 
             if ty.is_union() {
@@ -339,37 +411,77 @@ impl ToTokens for ir::Table<'_> {
                 let type_snake_name =
                     format_ident!("{}_type", field.ident.as_ref().to_snake_case());
 
-                let names_to_enum_variant = variants.iter().map(
-                    |ir::UnionVariant {
-                         ident: variant_ident,
-                         ty: variant_ty,
-                     }| {
-                        let variant_ty_wrapped = to_type_token(
-                            variant_ty,
-                            &quote!('a),
-                            &quote!(butte::ForwardsUOffset),
-                            true,
-                        );
-                        quote! {
-                            Some(#enum_ident::#variant_ident) => self.table
-                                .get::<#variant_ty_wrapped>(#struct_id::#offset_name)?
-                                .map(#union_ident::#variant_ident)
+                if field.metadata.required {
+                    let names_to_enum_variant = variants.iter().map(
+                        |ir::UnionVariant {
+                             ident: variant_ident,
+                             ty: variant_ty,
+                         }| {
+                            let variant_ty_wrapped = to_type_token(
+                                variant_ty,
+                                &quote!('a),
+                                &quote!(butte::ForwardsUOffset),
+                                true,
+                            );
+                            quote! {
+                                #enum_ident::#variant_ident => #union_ident::#variant_ident(self.table
+                                    .get::<#variant_ty_wrapped>(#struct_id::#offset_name)?
+                                    .ok_or_else(|| butte::Error::RequiredFieldMissing(#snake_name_str))?)
+                            }
+                        },
+                    );
+                    quote! {
+                        #[inline]
+                        pub fn #snake_name<'a>(&'a self) -> Result<#ty_ret, butte::Error> {
+                            Ok(match self.#type_snake_name()? {
+                              #(#names_to_enum_variant),*,
+                              #enum_ident::None => return Err(butte::Error::RequiredFieldMissing(#snake_name_str))
+                            })
                         }
-                    },
-                );
+                    }
+                } else {
+                    let names_to_enum_variant = variants.iter().map(
+                        |ir::UnionVariant {
+                             ident: variant_ident,
+                             ty: variant_ty,
+                         }| {
+                            let variant_ty_wrapped = to_type_token(
+                                variant_ty,
+                                &quote!('a),
+                                &quote!(butte::ForwardsUOffset),
+                                true,
+                            );
+                            quote! {
+                                Some(#enum_ident::#variant_ident) => self.table
+                                    .get::<#variant_ty_wrapped>(#struct_id::#offset_name)?
+                                    .map(#union_ident::#variant_ident)
+                            }
+                        },
+                    );
+
+                    quote! {
+                        #[inline]
+                        pub fn #snake_name<'a>(&'a self) -> Result<Option<#ty_ret>, butte::Error> {
+                            Ok(match self.#type_snake_name()? {
+                              #(#names_to_enum_variant),*,
+                              None | Some(#enum_ident::None) => None
+                            })
+                        }
+                    }
+                }
+            } else if field.metadata.required {
                 quote! {
                     #[inline]
-                    pub fn #snake_name<'a>(&'a self) -> Result<Option<#ty_simple_lifetime>, butte::Error> {
-                        Ok(match self.#type_snake_name()? {
-                          #(#names_to_enum_variant),*,
-                          None | Some(#enum_ident::None) => None
-                        })
+                    pub fn #snake_name<'a>(&'a self) -> Result<#ty_ret, butte::Error> {
+                        Ok(self.table
+                            .get::<#ty_wrapped>(#struct_id::#offset_name)?
+                            .ok_or_else(|| butte::Error::RequiredFieldMissing(#snake_name_str))?)
                     }
                 }
             } else {
                 quote! {
                     #[inline]
-                    pub fn #snake_name<'a>(&'a self) -> Result<Option<#ty_simple_lifetime>, butte::Error> {
+                    pub fn #snake_name<'a>(&'a self) -> Result<Option<#ty_ret>, butte::Error> {
                         self.table
                             .get::<#ty_wrapped>(#struct_id::#offset_name)
                     }
@@ -430,7 +542,6 @@ impl ToTokens for ir::Table<'_> {
                 // fields access
                 #(#field_accessors)*
 
-
                 pub fn get_root(buf: B) -> Result<Self, butte::Error> {
                     let table = butte::Table::get_root(buf)?;
                     Ok(Self { table })
@@ -462,11 +573,11 @@ impl ToTokens for ir::Table<'_> {
             }
 
             // Builder Args
-            // TODO: Can't use this because we can mix fields that are
-            // default-able with those that are not
             pub struct #args#args_lifetime_a {
                 #(#args_fields),*
             }
+
+            #args_default_impl
 
             //// builder
             pub struct #builder_type<'a, 'b> {
@@ -608,6 +719,15 @@ impl ToTokens for ir::Enum<'_> {
             }
         });
 
+        let default_value = values
+            .iter()
+            .map(|ir::EnumVal { ident: key, .. }| {
+                quote! {
+                    #enum_id::#key
+                }
+            })
+            .next();
+
         // assign a value to the key if one was given, otherwise give it the
         // enumerated index's value
         let variants_and_scalars =
@@ -664,6 +784,12 @@ impl ToTokens for ir::Enum<'_> {
             #doc
             pub enum #enum_id {
                 #(#fields),*
+            }
+
+            impl Default for #enum_id {
+                fn default() -> Self {
+                    #default_value
+                }
             }
 
             impl<'a> butte::Follow<'a> for #enum_id {
@@ -787,6 +913,11 @@ impl<'a> CodeGenerator<'a> {
 
     pub fn build_tokens(&mut self, tokens: &mut TokenStream) {
         let mut rpc_gen = self.rpc_gen.take();
+
+        (quote! {
+            #[allow(clippy::type_complexity)]
+        })
+        .to_tokens(tokens);
         for node in &self.root.nodes {
             self.node_to_tokens(node, &mut rpc_gen, tokens);
         }

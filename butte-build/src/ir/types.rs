@@ -114,9 +114,16 @@ pub struct Field<'a> {
     pub ty: Type<'a>,
     #[builder(default)]
     pub default_value: Option<ast::DefaultValue<'a>>,
-
+    #[builder(default)]
+    pub metadata: FieldMetadata,
     #[builder(default)]
     pub doc: ast::Comment<'a>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, TypedBuilder)]
+pub struct FieldMetadata {
+    #[builder(default)]
+    pub required: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -170,6 +177,16 @@ impl<'a> Type<'a> {
         match self {
             Type::Custom(CustomTypeRef { ty, .. }) => match ty {
                 CustomType::Union { .. } => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    pub fn is_enum(&self) -> bool {
+        match self {
+            Type::Custom(CustomTypeRef { ty, .. }) => match ty {
+                CustomType::Enum { .. } => true,
                 _ => false,
             },
             _ => false,
@@ -313,7 +330,6 @@ pub struct Union<'a> {
     pub ident: DottedIdent<'a>,
     // Ident of the enum "companion"
     pub enum_ident: DottedIdent<'a>,
-
     pub variants: Vec<UnionVariant<'a>>,
 
     #[builder(default)]
