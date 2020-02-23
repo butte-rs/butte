@@ -3,7 +3,7 @@ use anyhow::{anyhow, Result};
 use heck::SnakeCase;
 use itertools::Itertools;
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     convert::TryFrom,
 };
 
@@ -12,6 +12,7 @@ pub struct Builder<'a> {
     current_namespace: Option<ast::Namespace<'a>>,
     types: HashMap<ir::DottedIdent<'a>, CustomTypeStatus<'a>>,
     nodes: BTreeMap<usize, Vec<ir::Node<'a>>>,
+    root_types: HashSet<ir::DottedIdent<'a>>,
 }
 
 struct ElementInput<'a> {
@@ -19,6 +20,7 @@ struct ElementInput<'a> {
     pos: usize,
 }
 
+#[derive(Clone, Debug, PartialEq)]
 enum CustomTypeStatus<'a> {
     TableDeclared,
     Defined(ir::CustomType<'a>),
@@ -34,7 +36,7 @@ impl<'a> Builder<'a> {
             ast::Element::Enum(e) => self.new_enum(e, pos)?,
             ast::Element::Union(u) => self.new_union(u, pos)?,
             ast::Element::Rpc(r) => self.new_rpc(r, pos)?,
-            ast::Element::Root(..) => true, // Skip root types for now
+            ast::Element::Root(r) => self.new_root(r, pos)?,
             ast::Element::FileExtension(..) => unimplemented!(),
             ast::Element::FileIdentifier(..) => unimplemented!(),
             ast::Element::Attribute(..) => unimplemented!(),
@@ -108,6 +110,7 @@ impl<'a> Builder<'a> {
         }
 
         let ident = ident.clone();
+        let root_type = false; // Set as non-root by default
         let doc = t.doc.clone();
 
         self.types.insert(
@@ -115,8 +118,15 @@ impl<'a> Builder<'a> {
             CustomTypeStatus::Defined(ir::CustomType::Table),
         );
 
-        self.nodes
-            .insert(pos, vec![ir::Node::Table(ir::Table { ident, fields, doc })]);
+        self.nodes.insert(
+            pos,
+            vec![ir::Node::Table(ir::Table {
+                ident,
+                fields,
+                root_type,
+                doc,
+            })],
+        );
 
         Ok(true)
     }
@@ -310,6 +320,25 @@ impl<'a> Builder<'a> {
         })
     }
 
+    fn new_root(&mut self, root: &ast::Root<'a>, _: usize) -> Result<bool> {
+        let ident = self.make_fully_qualified_ident(ir::Ident::from(&root.typename));
+
+        self.new_root_ident(&ident)
+    }
+
+    fn new_root_ident(&mut self, ident: &ir::DottedIdent<'a>) -> Result<bool> {
+        if let Some(&CustomTypeStatus::Defined(ref def)) = self.types.get(&ident) {
+            if def == &ir::CustomType::Table {
+                self.root_types.insert(ident.clone());
+                Ok(true)
+            } else {
+                Err(anyhow!("Only tables can be root types: {}", ident))
+            }
+        } else {
+            Ok(false)
+        }
+    }
+
     fn new_rpc(&mut self, rpc: &ast::Rpc<'a>, pos: usize) -> Result<bool> {
         let ident = &self.make_fully_qualified_ident(ir::Ident::from(&rpc.id));
 
@@ -318,8 +347,14 @@ impl<'a> Builder<'a> {
         for m in &rpc.methods {
             let ident = ir::Ident::from(&m.id);
             let snake_ident = ir::Ident::from(m.id.as_ref().to_snake_case());
-            let request_type = ir::DottedIdent::from(&m.request_type);
-            let response_type = ir::DottedIdent::from(&m.response_type);
+
+            let request_type = self.make_fully_qualified_from_ast_dotted_ident(&m.request_type);
+            let response_type = self.make_fully_qualified_from_ast_dotted_ident(&m.response_type);
+
+            if !self.new_root_ident(&request_type)? || !self.new_root_ident(&response_type)? {
+                // Request & Response types have not been defined yet, push back to queue
+                return Ok(false);
+            }
             let streaming = match &m.metadata {
                 Some(m) => match m.values.get(&ast::Ident::from("streaming")) {
                     Some(Some(ast::Single::String("client"))) => ir::RpcStreaming::Client,
@@ -370,6 +405,18 @@ impl<'a> Builder<'a> {
         fqi
     }
 
+    fn make_fully_qualified_from_ast_dotted_ident(
+        &self,
+        dotted_ident: &ast::DottedIdent<'a>,
+    ) -> ir::DottedIdent<'a> {
+        if dotted_ident.parts.len() == 1 {
+            // We need to prefix the namespace
+            self.make_fully_qualified_ident(ir::Ident::from(dotted_ident.parts[0]))
+        } else {
+            ir::DottedIdent::from(dotted_ident.clone())
+        }
+    }
+
     fn try_type(&self, ty: &ast::Type<'a>) -> Option<ir::Type<'a>> {
         Some(match ty {
             ast::Type::Bool => ir::Type::Bool,
@@ -402,12 +449,7 @@ impl<'a> Builder<'a> {
                 }
             }
             ast::Type::Ident(dotted_ident) => {
-                let ident = if dotted_ident.parts.len() == 1 {
-                    // We need to prefix the namespace
-                    self.make_fully_qualified_ident(ir::Ident::from(dotted_ident.parts[0]))
-                } else {
-                    ir::DottedIdent::from(dotted_ident)
-                };
+                let ident = self.make_fully_qualified_from_ast_dotted_ident(&dotted_ident);
 
                 return self.find_custom_type(ident);
             }
@@ -431,6 +473,7 @@ impl<'a> Builder<'a> {
             current_namespace: None,
             types: HashMap::new(),
             nodes: BTreeMap::new(),
+            root_types: HashSet::new(),
         };
 
         // Keep track of the definition order,
@@ -463,13 +506,27 @@ impl<'a> Builder<'a> {
             input = std::mem::take(&mut unsatisfied);
         }
 
-        // handle namespaces
-        let (namespaces, rest): (Vec<_>, Vec<_>) = context
-            .nodes
+        let nodes = context.nodes;
+        let root_types = &context.root_types;
+
+        // mark tables that are root types
+        let nodes: Vec<_> = nodes
             .into_iter()
             .map(|(_, v)| v)
             .flatten()
-            .partition(ir::Node::is_namespace);
+            .map(|mut v| {
+                if let ir::Node::Table(ref mut t) = &mut v {
+                    if root_types.contains(&t.ident) {
+                        t.root_type = true;
+                    }
+                };
+                v
+            })
+            .collect();
+
+        // handle namespaces
+        let (namespaces, rest): (Vec<_>, Vec<_>) =
+            nodes.into_iter().partition(ir::Node::is_namespace);
 
         let mut namespaces: Vec<_> = namespaces
             .into_iter()
@@ -536,6 +593,33 @@ table HelloReply {
                         .ident(ir::Ident::from("message"))
                         .ty(ir::Type::String)
                         .build()])
+                    .build(),
+            )],
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_table_root() {
+        let input = "\
+table HelloReply {
+    message:string;
+}
+
+root_type HelloReply;
+";
+        let (_, schema) = crate::parser::schema_decl(input).unwrap();
+        let actual = Builder::build(schema).unwrap();
+        let expected = ir::Root {
+            nodes: vec![ir::Node::Table(
+                ir::Table::builder()
+                    .ident(ir::DottedIdent::from("HelloReply"))
+                    .fields(vec![ir::Field::builder()
+                        .ident(ir::Ident::from("message"))
+                        .ty(ir::Type::String)
+                        .build()])
+                    .root_type(true)
                     .build(),
             )],
         };
@@ -650,6 +734,53 @@ table HelloMsg {
                                     .build(),
                             ))
                             .build()])
+                        .build(),
+                ),
+                ir::Node::Table(
+                    ir::Table::builder()
+                        .ident(ir::DottedIdent::from("HelloMsg"))
+                        .fields(vec![ir::Field::builder()
+                            .ident(ir::Ident::from("val"))
+                            .ty(ir::Type::String)
+                            .build()])
+                        .build(),
+                ),
+            ],
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_table_depends_on_next_with_root_type_first() {
+        let input = "\
+root_type HelloReply;
+
+table HelloReply {
+    message: HelloMsg;
+}
+
+table HelloMsg {
+    val: string;
+}
+";
+        let (_, schema) = crate::parser::schema_decl(input).unwrap();
+        let actual = Builder::build(schema).unwrap();
+        let expected = ir::Root {
+            nodes: vec![
+                ir::Node::Table(
+                    ir::Table::builder()
+                        .ident(ir::DottedIdent::from("HelloReply"))
+                        .fields(vec![ir::Field::builder()
+                            .ident(ir::Ident::from("message"))
+                            .ty(ir::Type::Custom(
+                                ir::CustomTypeRef::builder()
+                                    .ident(ir::DottedIdent::from("HelloMsg"))
+                                    .ty(ir::CustomType::Table)
+                                    .build(),
+                            ))
+                            .build()])
+                        .root_type(true)
                         .build(),
                 ),
                 ir::Node::Table(
@@ -1045,6 +1176,85 @@ struct Vector3 {
                         .build(),
                 ),
             ],
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_rpc_method() {
+        let input = "\
+namespace foo.bar;
+table HelloMsg {
+    val: string;
+}
+
+table HelloReply {
+    message: HelloMsg;
+}
+
+rpc_service Greeter {
+    SayHello(foo.bar.HelloMsg) : foo.bar.HelloReply;
+}
+  
+";
+        let (_, schema) = crate::parser::schema_decl(input).unwrap();
+        let actual = Builder::build(schema).unwrap();
+        let expected = ir::Root {
+            nodes: vec![ir::Node::Namespace(
+                ir::Namespace::builder()
+                    .ident(ir::DottedIdent::parse_str("foo"))
+                    .nodes(vec![ir::Node::Namespace(
+                        ir::Namespace::builder()
+                            .ident(ir::DottedIdent::parse_str("foo.bar"))
+                            .nodes(vec![
+                                ir::Node::Table(
+                                    ir::Table::builder()
+                                        .ident(ir::DottedIdent::parse_str("foo.bar.HelloMsg"))
+                                        .root_type(true)
+                                        .fields(vec![ir::Field::builder()
+                                            .ident(ir::Ident::from("val"))
+                                            .ty(ir::Type::String)
+                                            .build()])
+                                        .build(),
+                                ),
+                                ir::Node::Table(
+                                    ir::Table::builder()
+                                        .ident(ir::DottedIdent::parse_str("foo.bar.HelloReply"))
+                                        .root_type(true)
+                                        .fields(vec![ir::Field::builder()
+                                            .ident(ir::Ident::from("message"))
+                                            .ty(ir::Type::Custom(
+                                                ir::CustomTypeRef::builder()
+                                                    .ident(ir::DottedIdent::parse_str(
+                                                        "foo.bar.HelloMsg",
+                                                    ))
+                                                    .ty(ir::CustomType::Table)
+                                                    .build(),
+                                            ))
+                                            .build()])
+                                        .build(),
+                                ),
+                                ir::Node::Rpc(
+                                    ir::Rpc::builder()
+                                        .ident(ir::DottedIdent::parse_str("foo.bar.Greeter"))
+                                        .methods(vec![ir::RpcMethod::builder()
+                                            .ident("SayHello")
+                                            .snake_ident("say_hello")
+                                            .request_type(ir::DottedIdent::parse_str(
+                                                "foo.bar.HelloMsg",
+                                            ))
+                                            .response_type(ir::DottedIdent::parse_str(
+                                                "foo.bar.HelloReply",
+                                            ))
+                                            .build()])
+                                        .build(),
+                                ),
+                            ])
+                            .build(),
+                    )])
+                    .build(),
+            )],
         };
 
         assert_eq!(actual, expected);

@@ -17,7 +17,7 @@ fn main() -> Result<()> {
     let req = HelloRequest::create(&mut builder, &args);
     builder.finish_minimal(req);
     let raw_bytes = builder.finished_data();
-    let root = fb::get_root::<HelloRequest>(raw_bytes)?;
+    let root = HelloRequest::get_root(raw_bytes)?;
     let dname = root.name()?;
     let expected = Some(raw_name);
     if dname != expected {
@@ -39,7 +39,7 @@ fn main() -> Result<()> {
 
     builder.finish_minimal(req);
     let raw_bytes = builder.finished_data();
-    let root = fb::get_root::<EitherHelloRequest>(raw_bytes)?;
+    let root = EitherHelloRequest::get_root(raw_bytes)?;
 
     let req_union = root.something()?;
     match req_union {
@@ -70,7 +70,7 @@ fn main() -> Result<()> {
     let req = FooBar::create(&mut builder, &args);
     builder.finish_minimal(req);
     let raw_bytes = builder.finished_data();
-    let root = fb::get_root::<FooBar>(raw_bytes)?;
+    let root = FooBar::get_root(raw_bytes)?;
     let dfoo = root.my_foo()?;
     let expected = Some(Foo::B);
     if dfoo != expected {

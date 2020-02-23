@@ -145,12 +145,16 @@ fn to_type_token(
                 quote!(#wrap_tokens::<#ty>)
             }
         }
-        ir::Type::Custom(ir::CustomTypeRef { ident, .. }) => {
+        ir::Type::Custom(ir::CustomTypeRef { ident, ty }) => {
             // Scalar types are never wrapped and have no lifetimes
             if ty.is_scalar() {
                 quote!(#ident)
             } else {
-                let ty = quote!(#ident<#lifetime>);
+                let ty = if ty == &ir::CustomType::Table {
+                    quote!(#ident<&#lifetime [u8]>) // handle structs
+                } else {
+                    quote!(#ident<#lifetime>)
+                };
                 let wrap_tokens = wrap_refs_types.into_token_stream();
                 if wrap_tokens.is_empty() || !wrap_outer {
                     ty
@@ -355,7 +359,7 @@ impl ToTokens for ir::Table<'_> {
                 );
                 quote! {
                     #[inline]
-                    pub fn #snake_name(&self) -> Result<Option<#ty_simple_lifetime>, butte::Error> {
+                    pub fn #snake_name<'a>(&'a self) -> Result<Option<#ty_simple_lifetime>, butte::Error> {
                         Ok(match self.#type_snake_name()? {
                           #(#names_to_enum_variant),*,
                           None | Some(#enum_ident::None) => None
@@ -365,7 +369,7 @@ impl ToTokens for ir::Table<'_> {
             } else {
                 quote! {
                     #[inline]
-                    pub fn #snake_name(&self) -> Result<Option<#ty_simple_lifetime>, butte::Error> {
+                    pub fn #snake_name<'a>(&'a self) -> Result<Option<#ty_simple_lifetime>, butte::Error> {
                         self.table
                             .get::<#ty_wrapped>(#struct_id::#offset_name)
                     }
@@ -388,39 +392,71 @@ impl ToTokens for ir::Table<'_> {
 
             #[derive(Copy, Clone, Debug, PartialEq)]
             #doc
-            pub struct #struct_id<'a> {
-                table: butte::Table<'a>,
+            pub struct #struct_id<B> {
+                table: butte::Table<B>,
             }
 
-            impl<'a> From<butte::Table<'a>> for #struct_id<'a> {
-                fn from(table: butte::Table<'a>) -> Self {
+            impl<B> From<butte::Table<B>> for #struct_id<B> {
+                fn from(table: butte::Table<B>) -> Self {
                     Self { table }
                 }
             }
 
-            impl<'a> #struct_id<'a> {
+            impl<B> From<#struct_id<B>> for butte::Table<B> {
+                fn from(s: #struct_id<B>) -> Self {
+                    s.table
+                }
+            }
+
+            impl<'a> #struct_id<&'a [u8]> {
+                // field offset constants
+                #(#field_offset_constants)*
+
                 pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr>(
                     fbb: &'mut_bldr mut butte::FlatBufferBuilder<'bldr>,
                     args: &'args #args#args_lifetime_args
-                ) -> butte::WIPOffset<#struct_id<'bldr>> {
+                ) -> butte::WIPOffset<#struct_id<&'bldr [u8]>> {
                     let mut builder = #builder_type::new(fbb);
                     #(#builder_add_calls)*
                     builder.finish()
                 }
-
-                // field offset constants
-                #(#field_offset_constants)*
-
-                // fields access
-                #(#field_accessors)*
             }
 
-            impl<'a> butte::Follow<'a> for #struct_id<'a> {
+
+            impl<B> #struct_id<B>
+            where
+                B: std::convert::AsRef<[u8]>
+            {
+                // fields access
+                #(#field_accessors)*
+
+
+                pub fn get_root(buf: B) -> Result<Self, butte::Error> {
+                    let table = butte::Table::get_root(buf)?;
+                    Ok(Self { table })
+                }
+            }
+
+            impl<'a> butte::Follow<'a> for #struct_id<&'a [u8]> {
                 type Inner = Self;
 
                 #[inline]
                 fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, butte::Error> {
-                    let table = butte::Table { buf, loc };
+                    let table = butte::Table::new(buf, loc);
+                    Ok(Self { table })
+                }
+            }
+
+            impl<B> butte::FollowBuf for #struct_id<B>
+            where
+                B: std::convert::AsRef<[u8]>
+            {
+                type Buf = B;
+                type Inner = Self;
+
+                #[inline]
+                fn follow_buf(buf: Self::Buf, loc: usize) -> Result<Self::Inner, butte::Error> {
+                    let table = butte::Table::new(buf, loc);
                     Ok(Self { table })
                 }
             }
@@ -450,7 +486,7 @@ impl ToTokens for ir::Table<'_> {
                 }
 
                 #[inline]
-                pub fn finish(self) -> butte::WIPOffset<#struct_id<'a>> {
+                pub fn finish(self) -> butte::WIPOffset<#struct_id<&'a [u8]>> {
                     let o = self.fbb.end_table(self.start);
                     #(#required_fields)*
                     butte::WIPOffset::new(o.value())

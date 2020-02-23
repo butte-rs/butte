@@ -91,6 +91,8 @@ pub struct Table<'a> {
     #[builder(default)]
     pub fields: Vec<Field<'a>>,
     #[builder(default)]
+    pub root_type: bool,
+    #[builder(default)]
     pub doc: ast::Comment<'a>,
 }
 
@@ -240,6 +242,15 @@ pub enum CustomType<'a> {
         enum_ident: DottedIdent<'a>,
         variants: Vec<UnionVariant<'a>>,
     },
+}
+
+impl<'a> CustomType<'a> {
+    pub fn is_scalar(&self) -> bool {
+        match self {
+            CustomType::Struct { .. } | CustomType::Enum { .. } => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
