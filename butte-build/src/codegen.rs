@@ -99,10 +99,30 @@ impl ToTokens for ast::Scalar {
 /// Convert a `types::Type` to a type with the supplied wrapper for reference types
 fn to_type_token(
     ty: &ir::Type,
-    lifetime: &impl ToTokens,
-    wrap_refs_types: &impl ToTokens,
+    lifetime: &TokenStream,
+    wrap_refs_types: &TokenStream,
     wrap_outer: bool,
-) -> proc_macro2::TokenStream {
+) -> TokenStream {
+    let empty_lifetime = quote!();
+
+    let lifetime_is_named = {
+        if lifetime.is_empty() {
+            false
+        } else {
+            let parsed_lifetime =
+                syn::parse2::<syn::Lifetime>(lifetime.clone()).expect("lifetime must be valid");
+
+            let anonymous_lifetime = syn::Ident::new("_", proc_macro2::Span::call_site());
+            parsed_lifetime.ident != anonymous_lifetime
+        }
+    };
+    // Lifetime for references (&str, &[u8], ...)
+    let ref_lifetime = if lifetime_is_named {
+        lifetime
+    } else {
+        &empty_lifetime
+    };
+
     match ty {
         ir::Type::Bool => quote!(bool),
         ir::Type::Byte => quote!(i8),
@@ -127,10 +147,11 @@ fn to_type_token(
         ir::Type::Float64 => quote!(f64),
         ir::Type::String => {
             let wrap_tokens = wrap_refs_types.into_token_stream();
+
             if wrap_tokens.is_empty() || !wrap_outer {
-                quote!(&#lifetime str)
+                quote!(&#ref_lifetime str)
             } else {
-                quote!(#wrap_tokens::<&#lifetime str>)
+                quote!(#wrap_tokens::<&#ref_lifetime str>)
             }
         }
         ir::Type::Array(ty) => {
@@ -151,7 +172,7 @@ fn to_type_token(
                 quote!(#ident)
             } else {
                 let ty = if ty == &ir::CustomType::Table {
-                    quote!(#ident<&#lifetime [u8]>) // handle structs
+                    quote!(#ident<&#ref_lifetime [u8]>) // handle structs
                 } else {
                     quote!(#ident<#lifetime>)
                 };
@@ -388,8 +409,8 @@ impl ToTokens for ir::Table<'_> {
             let snake_name_str = snake_name.to_string();
             let offset_name = offset_id(field);
             let ty = &field.ty;
-            let ty_ret = to_type_token(ty, &quote!('a), &quote!(butte::ForwardsUOffset), false);
-            let ty_wrapped = to_type_token(ty, &quote!('a), &quote!(butte::ForwardsUOffset), true);
+            let ty_ret = to_type_token(ty, &quote!('_), &quote!(butte::ForwardsUOffset), false);
+            let ty_wrapped = to_type_token(ty, &quote!('_), &quote!(butte::ForwardsUOffset), true);
 
             if ty.is_union() {
                 let (union_ident, enum_ident, variants) = match ty {
@@ -419,7 +440,7 @@ impl ToTokens for ir::Table<'_> {
                          }| {
                             let variant_ty_wrapped = to_type_token(
                                 variant_ty,
-                                &quote!('a),
+                                &quote!('_),
                                 &quote!(butte::ForwardsUOffset),
                                 true,
                             );
@@ -432,7 +453,7 @@ impl ToTokens for ir::Table<'_> {
                     );
                     quote! {
                         #[inline]
-                        pub fn #snake_name<'a>(&'a self) -> Result<#ty_ret, butte::Error> {
+                        pub fn #snake_name(&self) -> Result<#ty_ret, butte::Error> {
                             Ok(match self.#type_snake_name()? {
                               #(#names_to_enum_variant),*,
                               #enum_ident::None => return Err(butte::Error::RequiredFieldMissing(#snake_name_str))
@@ -447,7 +468,7 @@ impl ToTokens for ir::Table<'_> {
                          }| {
                             let variant_ty_wrapped = to_type_token(
                                 variant_ty,
-                                &quote!('a),
+                                &quote!('_),
                                 &quote!(butte::ForwardsUOffset),
                                 true,
                             );
@@ -461,7 +482,7 @@ impl ToTokens for ir::Table<'_> {
 
                     quote! {
                         #[inline]
-                        pub fn #snake_name<'a>(&'a self) -> Result<Option<#ty_ret>, butte::Error> {
+                        pub fn #snake_name(&self) -> Result<Option<#ty_ret>, butte::Error> {
                             Ok(match self.#type_snake_name()? {
                               #(#names_to_enum_variant),*,
                               None | Some(#enum_ident::None) => None
@@ -472,7 +493,7 @@ impl ToTokens for ir::Table<'_> {
             } else if field.metadata.required {
                 quote! {
                     #[inline]
-                    pub fn #snake_name<'a>(&'a self) -> Result<#ty_ret, butte::Error> {
+                    pub fn #snake_name(&self) -> Result<#ty_ret, butte::Error> {
                         Ok(self.table
                             .get::<#ty_wrapped>(#struct_id::#offset_name)?
                             .ok_or_else(|| butte::Error::RequiredFieldMissing(#snake_name_str))?)
@@ -481,7 +502,7 @@ impl ToTokens for ir::Table<'_> {
             } else {
                 quote! {
                     #[inline]
-                    pub fn #snake_name<'a>(&'a self) -> Result<Option<#ty_ret>, butte::Error> {
+                    pub fn #snake_name(&self) -> Result<Option<#ty_ret>, butte::Error> {
                         self.table
                             .get::<#ty_wrapped>(#struct_id::#offset_name)
                     }
