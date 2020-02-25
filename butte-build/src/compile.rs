@@ -31,7 +31,7 @@ pub fn compile_fbs_generic(
             &rest[..30]
         ));
     }
-    let root = Builder::build(schema).map_err(|_| anyhow!("semantic analysis failed"))?;
+    let root = Builder::build(schema).map_err(|e| anyhow!("semantic analysis failed, {}", e))?;
 
     let mut generator = CodeGenerator { root, rpc_gen };
 

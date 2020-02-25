@@ -514,7 +514,10 @@ impl<'a> Builder<'a> {
             } else {
                 // Didn't we progress?
                 if context.nodes.len() == nodes_len {
-                    return Err(anyhow!("Unable to type schema")); // TODO proper reporting
+                    let unsatisfied_elements: Vec<_> =
+                        unsatisfied.into_iter().map(|u| u.el).collect();
+                    return Err(anyhow!("Unable to type schema: the following definitions referenced items not found: {:?}", unsatisfied_elements));
+                    // TODO proper reporting
                 }
             }
             input = std::mem::take(&mut unsatisfied);
