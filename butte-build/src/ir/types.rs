@@ -24,7 +24,7 @@ pub enum Node<'a> {
 }
 
 impl<'a> Node<'a> {
-    pub fn ident(&self) -> &DottedIdent<'a> {
+    pub fn ident(&self) -> &QualifiedIdent<'a> {
         match self {
             Node::Namespace(ns) => &ns.ident,
             Node::Table(t) => &t.ident,
@@ -35,7 +35,7 @@ impl<'a> Node<'a> {
         }
     }
 
-    pub fn namespace(&self) -> Option<DottedIdent<'a>> {
+    pub fn namespace(&self) -> Option<QualifiedIdent<'a>> {
         self.ident().namespace()
     }
 
@@ -77,7 +77,7 @@ pub struct Root<'a> {
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Namespace<'a> {
     // The namespace's fully-qualified name
-    pub ident: DottedIdent<'a>,
+    pub ident: QualifiedIdent<'a>,
 
     /// IR namespace nodes
     #[builder(default)]
@@ -87,7 +87,7 @@ pub struct Namespace<'a> {
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Table<'a> {
     /// The table's ident
-    pub ident: DottedIdent<'a>,
+    pub ident: QualifiedIdent<'a>,
     #[builder(default)]
     pub fields: Vec<Field<'a>>,
     #[builder(default)]
@@ -99,7 +99,7 @@ pub struct Table<'a> {
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Struct<'a> {
     /// The table's ident
-    pub ident: DottedIdent<'a>,
+    pub ident: QualifiedIdent<'a>,
     #[builder(default)]
     pub fields: Vec<Field<'a>>,
 
@@ -197,7 +197,7 @@ impl<'a> Type<'a> {
     // ubyte based enum with all the union variants, + None (default 0)
     //
     // This method lets us generate the companion type name from the union.
-    pub fn make_union_enum_type_companion(&self) -> Option<&DottedIdent<'a>> {
+    pub fn make_union_enum_type_companion(&self) -> Option<&QualifiedIdent<'a>> {
         match self {
             Type::Custom(CustomTypeRef { ty, .. }) => match ty {
                 CustomType::Union { ref enum_ident, .. } => Some(enum_ident),
@@ -241,7 +241,7 @@ impl Display for Type<'_> {
 
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct CustomTypeRef<'a> {
-    pub ident: DottedIdent<'a>,
+    pub ident: QualifiedIdent<'a>,
     pub ty: CustomType<'a>,
 }
 
@@ -256,7 +256,7 @@ pub enum CustomType<'a> {
         base_type: EnumBaseType,
     },
     Union {
-        enum_ident: DottedIdent<'a>,
+        enum_ident: QualifiedIdent<'a>,
         variants: Vec<UnionVariant<'a>>,
     },
 }
@@ -272,7 +272,7 @@ impl<'a> CustomType<'a> {
 
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Enum<'a> {
-    pub ident: DottedIdent<'a>,
+    pub ident: QualifiedIdent<'a>,
     pub values: Vec<EnumVal<'a>>,
     pub base_type: EnumBaseType,
 
@@ -327,9 +327,9 @@ impl<'a> std::convert::TryFrom<&ast::Type<'a>> for EnumBaseType {
 
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Union<'a> {
-    pub ident: DottedIdent<'a>,
+    pub ident: QualifiedIdent<'a>,
     // Ident of the enum "companion"
-    pub enum_ident: DottedIdent<'a>,
+    pub enum_ident: QualifiedIdent<'a>,
     pub variants: Vec<UnionVariant<'a>>,
 
     #[builder(default)]
@@ -339,7 +339,7 @@ pub struct Union<'a> {
 /// An RPC service.
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Rpc<'a> {
-    pub ident: DottedIdent<'a>,
+    pub ident: QualifiedIdent<'a>,
     pub methods: Vec<RpcMethod<'a>>,
 
     #[builder(default)]
@@ -356,10 +356,10 @@ pub struct RpcMethod<'a> {
     pub snake_ident: Ident<'a>,
 
     /// The request type of the method.
-    pub request_type: DottedIdent<'a>,
+    pub request_type: QualifiedIdent<'a>,
 
     /// The response type of the method.
-    pub response_type: DottedIdent<'a>,
+    pub response_type: QualifiedIdent<'a>,
 
     /// Method metadata.
     #[builder(default)]
@@ -459,12 +459,12 @@ impl<'a> Display for Ident<'a> {
 
 /// An identifier composed of `Ident`s separated by dots.
 #[derive(Default, Debug, Clone, PartialEq, Hash, Eq, From)]
-pub struct DottedIdent<'a> {
+pub struct QualifiedIdent<'a> {
     pub parts: Vec<Ident<'a>>,
 }
 
-impl<'a> DottedIdent<'a> {
-    pub fn namespace(&self) -> Option<DottedIdent<'a>> {
+impl<'a> QualifiedIdent<'a> {
+    pub fn namespace(&self) -> Option<QualifiedIdent<'a>> {
         if self.parts.len() > 1 {
             Some(Self {
                 parts: self.parts[..self.parts.len() - 1].to_vec(),
@@ -480,13 +480,13 @@ impl<'a> DottedIdent<'a> {
 
     // Assumes correctly formed ident
     pub fn parse_str(s: &'a str) -> Self {
-        DottedIdent {
+        QualifiedIdent {
             parts: s.split('.').map(Ident::from).collect(),
         }
     }
 }
 
-impl<'a> From<&'a str> for DottedIdent<'a> {
+impl<'a> From<&'a str> for QualifiedIdent<'a> {
     fn from(s: &'a str) -> Self {
         Self {
             parts: vec![s.into()],
@@ -494,23 +494,23 @@ impl<'a> From<&'a str> for DottedIdent<'a> {
     }
 }
 
-impl<'a> From<ast::DottedIdent<'a>> for DottedIdent<'a> {
-    fn from(ident: ast::DottedIdent<'a>) -> Self {
+impl<'a> From<ast::QualifiedIdent<'a>> for QualifiedIdent<'a> {
+    fn from(ident: ast::QualifiedIdent<'a>) -> Self {
         Self {
             parts: ident.parts.into_iter().map(Into::into).collect(),
         }
     }
 }
 
-impl<'a> From<&ast::DottedIdent<'a>> for DottedIdent<'a> {
-    fn from(ident: &ast::DottedIdent<'a>) -> Self {
+impl<'a> From<&ast::QualifiedIdent<'a>> for QualifiedIdent<'a> {
+    fn from(ident: &ast::QualifiedIdent<'a>) -> Self {
         Self {
             parts: ident.parts.iter().map(Into::into).collect(),
         }
     }
 }
 
-impl<'a> Display for DottedIdent<'a> {
+impl<'a> Display for QualifiedIdent<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use itertools::Itertools;
         write!(f, "{}", self.parts.iter().join("."))

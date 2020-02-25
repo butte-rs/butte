@@ -10,9 +10,9 @@ use std::{
 #[derive(Default)]
 pub struct Builder<'a> {
     current_namespace: Option<ast::Namespace<'a>>,
-    types: HashMap<ir::DottedIdent<'a>, CustomTypeStatus<'a>>,
+    types: HashMap<ir::QualifiedIdent<'a>, CustomTypeStatus<'a>>,
     nodes: BTreeMap<usize, Vec<ir::Node<'a>>>,
-    root_types: HashSet<ir::DottedIdent<'a>>,
+    root_types: HashSet<ir::QualifiedIdent<'a>>,
 }
 
 struct ElementInput<'a> {
@@ -49,7 +49,7 @@ impl<'a> Builder<'a> {
             pos,
             vec![ir::Node::Namespace(
                 ir::Namespace::builder()
-                    .ident(ir::DottedIdent::from(ns.ident.clone()))
+                    .ident(ir::QualifiedIdent::from(ns.ident.clone()))
                     .build(),
             )],
         );
@@ -255,7 +255,7 @@ impl<'a> Builder<'a> {
 
         // Make sure all references to custom types are resolved
         for f in &u.values {
-            let ty = self.try_type(&ast::Type::Ident(ast::DottedIdent::from(vec![f.id])));
+            let ty = self.try_type(&ast::Type::Ident(ast::QualifiedIdent::from(vec![f.id])));
             if let Some(ty) = ty {
                 let id = &f.id;
                 variants.push(ir::UnionVariant {
@@ -340,7 +340,7 @@ impl<'a> Builder<'a> {
         self.new_root_ident(&ident)
     }
 
-    fn new_root_ident(&mut self, ident: &ir::DottedIdent<'a>) -> Result<bool> {
+    fn new_root_ident(&mut self, ident: &ir::QualifiedIdent<'a>) -> Result<bool> {
         if let Some(&CustomTypeStatus::Defined(ref def)) = self.types.get(&ident) {
             if def == &ir::CustomType::Table {
                 self.root_types.insert(ident.clone());
@@ -362,8 +362,9 @@ impl<'a> Builder<'a> {
             let ident = ir::Ident::from(&m.id);
             let snake_ident = ir::Ident::from(m.id.as_ref().to_snake_case());
 
-            let request_type = self.make_fully_qualified_from_ast_dotted_ident(&m.request_type);
-            let response_type = self.make_fully_qualified_from_ast_dotted_ident(&m.response_type);
+            let request_type = self.make_fully_qualified_from_ast_qualified_ident(&m.request_type);
+            let response_type =
+                self.make_fully_qualified_from_ast_qualified_ident(&m.response_type);
 
             if !self.new_root_ident(&request_type)? || !self.new_root_ident(&response_type)? {
                 // Request & Response types have not been defined yet, push back to queue
@@ -410,24 +411,24 @@ impl<'a> Builder<'a> {
         self.current_namespace.as_ref()
     }
 
-    fn make_fully_qualified_ident(&self, ident: ir::Ident<'a>) -> ir::DottedIdent<'a> {
+    fn make_fully_qualified_ident(&self, ident: ir::Ident<'a>) -> ir::QualifiedIdent<'a> {
         let mut fqi = self
             .current_namespace()
-            .map(|ns| ir::DottedIdent::from(&ns.ident))
+            .map(|ns| ir::QualifiedIdent::from(&ns.ident))
             .unwrap_or_default();
         fqi.parts.push(ident);
         fqi
     }
 
-    fn make_fully_qualified_from_ast_dotted_ident(
+    fn make_fully_qualified_from_ast_qualified_ident(
         &self,
-        dotted_ident: &ast::DottedIdent<'a>,
-    ) -> ir::DottedIdent<'a> {
-        if dotted_ident.parts.len() == 1 {
+        qualified_ident: &ast::QualifiedIdent<'a>,
+    ) -> ir::QualifiedIdent<'a> {
+        if qualified_ident.parts.len() == 1 {
             // We need to prefix the namespace
-            self.make_fully_qualified_ident(ir::Ident::from(dotted_ident.parts[0]))
+            self.make_fully_qualified_ident(ir::Ident::from(qualified_ident.parts[0]))
         } else {
-            ir::DottedIdent::from(dotted_ident.clone())
+            ir::QualifiedIdent::from(qualified_ident.clone())
         }
     }
 
@@ -462,15 +463,18 @@ impl<'a> Builder<'a> {
                     return None; // unsatisfied inner type
                 }
             }
-            ast::Type::Ident(dotted_ident) => {
-                let ident = self.make_fully_qualified_from_ast_dotted_ident(&dotted_ident);
+            ast::Type::Ident(qualified_ident) => {
+                let ident = self.make_fully_qualified_from_ast_qualified_ident(&qualified_ident);
 
                 return self.find_custom_type(ident);
             }
         })
     }
 
-    fn find_custom_type(&self, fully_qualified_ident: ir::DottedIdent<'a>) -> Option<ir::Type<'a>> {
+    fn find_custom_type(
+        &self,
+        fully_qualified_ident: ir::QualifiedIdent<'a>,
+    ) -> Option<ir::Type<'a>> {
         let ident = fully_qualified_ident;
 
         let ty = match self.types.get(&ident) {
@@ -570,7 +574,7 @@ impl<'a> Builder<'a> {
             let ns_depth = ns.ident.parts.len();
             for i in (1..ns_depth).rev() {
                 let mut parent = ir::Namespace::builder()
-                    .ident(ir::DottedIdent::from(ns.ident.parts[..i].to_vec()))
+                    .ident(ir::QualifiedIdent::from(ns.ident.parts[..i].to_vec()))
                     .build();
                 parent.nodes.push(ir::Node::Namespace(ns));
                 ns = parent;
@@ -605,7 +609,7 @@ table HelloReply {
         let expected = ir::Root {
             nodes: vec![ir::Node::Table(
                 ir::Table::builder()
-                    .ident(ir::DottedIdent::from("HelloReply"))
+                    .ident(ir::QualifiedIdent::from("HelloReply"))
                     .fields(vec![ir::Field::builder()
                         .ident(ir::Ident::from("message"))
                         .ty(ir::Type::String)
@@ -631,7 +635,7 @@ root_type HelloReply;
         let expected = ir::Root {
             nodes: vec![ir::Node::Table(
                 ir::Table::builder()
-                    .ident(ir::DottedIdent::from("HelloReply"))
+                    .ident(ir::QualifiedIdent::from("HelloReply"))
                     .fields(vec![ir::Field::builder()
                         .ident(ir::Ident::from("message"))
                         .ty(ir::Type::String)
@@ -658,13 +662,13 @@ table HelloReply {
         let expected = ir::Root {
             nodes: vec![ir::Node::Namespace(
                 ir::Namespace::builder()
-                    .ident(ir::DottedIdent::parse_str("foo"))
+                    .ident(ir::QualifiedIdent::parse_str("foo"))
                     .nodes(vec![ir::Node::Namespace(
                         ir::Namespace::builder()
-                            .ident(ir::DottedIdent::parse_str("foo.bar"))
+                            .ident(ir::QualifiedIdent::parse_str("foo.bar"))
                             .nodes(vec![ir::Node::Table(
                                 ir::Table::builder()
-                                    .ident(ir::DottedIdent::parse_str("foo.bar.HelloReply"))
+                                    .ident(ir::QualifiedIdent::parse_str("foo.bar.HelloReply"))
                                     .fields(vec![ir::Field::builder()
                                         .ident(ir::Ident::from("message"))
                                         .ty(ir::Type::String)
@@ -697,7 +701,7 @@ table HelloReply {
             nodes: vec![
                 ir::Node::Table(
                     ir::Table::builder()
-                        .ident(ir::DottedIdent::from("HelloMsg"))
+                        .ident(ir::QualifiedIdent::from("HelloMsg"))
                         .fields(vec![ir::Field::builder()
                             .ident(ir::Ident::from("val"))
                             .ty(ir::Type::String)
@@ -706,12 +710,12 @@ table HelloReply {
                 ),
                 ir::Node::Table(
                     ir::Table::builder()
-                        .ident(ir::DottedIdent::from("HelloReply"))
+                        .ident(ir::QualifiedIdent::from("HelloReply"))
                         .fields(vec![ir::Field::builder()
                             .ident(ir::Ident::from("message"))
                             .ty(ir::Type::Custom(
                                 ir::CustomTypeRef::builder()
-                                    .ident(ir::DottedIdent::from("HelloMsg"))
+                                    .ident(ir::QualifiedIdent::from("HelloMsg"))
                                     .ty(ir::CustomType::Table)
                                     .build(),
                             ))
@@ -736,7 +740,7 @@ table HelloMsg {
         let expected = ir::Root {
             nodes: vec![ir::Node::Table(
                 ir::Table::builder()
-                    .ident(ir::DottedIdent::from("HelloMsg"))
+                    .ident(ir::QualifiedIdent::from("HelloMsg"))
                     .fields(vec![ir::Field::builder()
                         .ident(ir::Ident::from("message"))
                         .ty(ir::Type::String)
@@ -766,12 +770,12 @@ table HelloMsg {
             nodes: vec![
                 ir::Node::Table(
                     ir::Table::builder()
-                        .ident(ir::DottedIdent::from("HelloReply"))
+                        .ident(ir::QualifiedIdent::from("HelloReply"))
                         .fields(vec![ir::Field::builder()
                             .ident(ir::Ident::from("message"))
                             .ty(ir::Type::Custom(
                                 ir::CustomTypeRef::builder()
-                                    .ident(ir::DottedIdent::from("HelloMsg"))
+                                    .ident(ir::QualifiedIdent::from("HelloMsg"))
                                     .ty(ir::CustomType::Table)
                                     .build(),
                             ))
@@ -780,7 +784,7 @@ table HelloMsg {
                 ),
                 ir::Node::Table(
                     ir::Table::builder()
-                        .ident(ir::DottedIdent::from("HelloMsg"))
+                        .ident(ir::QualifiedIdent::from("HelloMsg"))
                         .fields(vec![ir::Field::builder()
                             .ident(ir::Ident::from("val"))
                             .ty(ir::Type::String)
@@ -812,12 +816,12 @@ table HelloMsg {
             nodes: vec![
                 ir::Node::Table(
                     ir::Table::builder()
-                        .ident(ir::DottedIdent::from("HelloReply"))
+                        .ident(ir::QualifiedIdent::from("HelloReply"))
                         .fields(vec![ir::Field::builder()
                             .ident(ir::Ident::from("message"))
                             .ty(ir::Type::Custom(
                                 ir::CustomTypeRef::builder()
-                                    .ident(ir::DottedIdent::from("HelloMsg"))
+                                    .ident(ir::QualifiedIdent::from("HelloMsg"))
                                     .ty(ir::CustomType::Table)
                                     .build(),
                             ))
@@ -827,7 +831,7 @@ table HelloMsg {
                 ),
                 ir::Node::Table(
                     ir::Table::builder()
-                        .ident(ir::DottedIdent::from("HelloMsg"))
+                        .ident(ir::QualifiedIdent::from("HelloMsg"))
                         .fields(vec![ir::Field::builder()
                             .ident(ir::Ident::from("val"))
                             .ty(ir::Type::String)
@@ -852,12 +856,12 @@ table HelloReply {
         let expected = ir::Root {
             nodes: vec![ir::Node::Table(
                 ir::Table::builder()
-                    .ident(ir::DottedIdent::from("HelloReply"))
+                    .ident(ir::QualifiedIdent::from("HelloReply"))
                     .fields(vec![ir::Field::builder()
                         .ident(ir::Ident::from("message"))
                         .ty(ir::Type::Custom(
                             ir::CustomTypeRef::builder()
-                                .ident(ir::DottedIdent::from("HelloReply"))
+                                .ident(ir::QualifiedIdent::from("HelloReply"))
                                 .ty(ir::CustomType::Table)
                                 .build(),
                         ))
@@ -883,7 +887,7 @@ struct Vector3 {
         let expected = ir::Root {
             nodes: vec![ir::Node::Struct(
                 ir::Struct::builder()
-                    .ident(ir::DottedIdent::from("Vector3"))
+                    .ident(ir::QualifiedIdent::from("Vector3"))
                     .fields(vec![
                         ir::Field::builder()
                             .ident(ir::Ident::from("x"))
@@ -923,7 +927,7 @@ struct Vector3 {
             nodes: vec![
                 ir::Node::Struct(
                     ir::Struct::builder()
-                        .ident(ir::DottedIdent::from("Vector2"))
+                        .ident(ir::QualifiedIdent::from("Vector2"))
                         .fields(vec![
                             ir::Field::builder()
                                 .ident(ir::Ident::from("x"))
@@ -938,13 +942,13 @@ struct Vector3 {
                 ),
                 ir::Node::Struct(
                     ir::Struct::builder()
-                        .ident(ir::DottedIdent::from("Vector3"))
+                        .ident(ir::QualifiedIdent::from("Vector3"))
                         .fields(vec![
                             ir::Field::builder()
                                 .ident(ir::Ident::from("xy"))
                                 .ty(ir::Type::Custom(
                                     ir::CustomTypeRef::builder()
-                                        .ident(ir::DottedIdent::from("Vector2"))
+                                        .ident(ir::QualifiedIdent::from("Vector2"))
                                         .ty(ir::CustomType::Struct {
                                             fields: vec![
                                                 ir::Field::builder()
@@ -981,7 +985,7 @@ struct Vector3 {
         let expected = ir::Root {
             nodes: vec![ir::Node::Enum(
                 ir::Enum::builder()
-                    .ident(ir::DottedIdent::from("MyEnum"))
+                    .ident(ir::QualifiedIdent::from("MyEnum"))
                     .base_type(ir::EnumBaseType::UByte)
                     .values(vec![
                         ir::EnumVal::builder().ident(ir::Ident::from("Foo")).build(),
@@ -1014,7 +1018,7 @@ struct Vector3 {
             nodes: vec![
                 ir::Node::Table(
                     ir::Table::builder()
-                        .ident(ir::DottedIdent::from("A"))
+                        .ident(ir::QualifiedIdent::from("A"))
                         .fields(vec![ir::Field::builder()
                             .ident(ir::Ident::from("message"))
                             .ty(ir::Type::String)
@@ -1023,7 +1027,7 @@ struct Vector3 {
                 ),
                 ir::Node::Table(
                     ir::Table::builder()
-                        .ident(ir::DottedIdent::from("B"))
+                        .ident(ir::QualifiedIdent::from("B"))
                         .fields(vec![ir::Field::builder()
                             .ident(ir::Ident::from("message"))
                             .ty(ir::Type::Array(Box::new(ir::Type::UByte)))
@@ -1032,7 +1036,7 @@ struct Vector3 {
                 ),
                 ir::Node::Enum(
                     ir::Enum::builder()
-                        .ident(ir::DottedIdent::from("AorBType"))
+                        .ident(ir::QualifiedIdent::from("AorBType"))
                         .base_type(ir::EnumBaseType::UByte)
                         .values(vec![
                             ir::EnumVal::builder()
@@ -1046,14 +1050,14 @@ struct Vector3 {
                 ),
                 ir::Node::Union(
                     ir::Union::builder()
-                        .ident(ir::DottedIdent::from("AorB"))
-                        .enum_ident(ir::DottedIdent::from("AorBType"))
+                        .ident(ir::QualifiedIdent::from("AorB"))
+                        .enum_ident(ir::QualifiedIdent::from("AorBType"))
                         .variants(vec![
                             ir::UnionVariant::builder()
                                 .ident(ir::Ident::from("A"))
                                 .ty(ir::Type::Custom(
                                     ir::CustomTypeRef::builder()
-                                        .ident(ir::DottedIdent::from("A"))
+                                        .ident(ir::QualifiedIdent::from("A"))
                                         .ty(ir::CustomType::Table)
                                         .build(),
                                 ))
@@ -1062,7 +1066,7 @@ struct Vector3 {
                                 .ident(ir::Ident::from("B"))
                                 .ty(ir::Type::Custom(
                                     ir::CustomTypeRef::builder()
-                                        .ident(ir::DottedIdent::from("B"))
+                                        .ident(ir::QualifiedIdent::from("B"))
                                         .ty(ir::CustomType::Table)
                                         .build(),
                                 ))
@@ -1099,7 +1103,7 @@ struct Vector3 {
             nodes: vec![
                 ir::Node::Table(
                     ir::Table::builder()
-                        .ident(ir::DottedIdent::from("A"))
+                        .ident(ir::QualifiedIdent::from("A"))
                         .fields(vec![ir::Field::builder()
                             .ident(ir::Ident::from("message"))
                             .ty(ir::Type::String)
@@ -1108,7 +1112,7 @@ struct Vector3 {
                 ),
                 ir::Node::Table(
                     ir::Table::builder()
-                        .ident(ir::DottedIdent::from("B"))
+                        .ident(ir::QualifiedIdent::from("B"))
                         .fields(vec![ir::Field::builder()
                             .ident(ir::Ident::from("message"))
                             .ty(ir::Type::Array(Box::new(ir::Type::UByte)))
@@ -1117,7 +1121,7 @@ struct Vector3 {
                 ),
                 ir::Node::Enum(
                     ir::Enum::builder()
-                        .ident(ir::DottedIdent::from("AorBType"))
+                        .ident(ir::QualifiedIdent::from("AorBType"))
                         .base_type(ir::EnumBaseType::UByte)
                         .values(vec![
                             ir::EnumVal::builder()
@@ -1131,14 +1135,14 @@ struct Vector3 {
                 ),
                 ir::Node::Union(
                     ir::Union::builder()
-                        .ident(ir::DottedIdent::from("AorB"))
-                        .enum_ident(ir::DottedIdent::from("AorBType"))
+                        .ident(ir::QualifiedIdent::from("AorB"))
+                        .enum_ident(ir::QualifiedIdent::from("AorBType"))
                         .variants(vec![
                             ir::UnionVariant::builder()
                                 .ident(ir::Ident::from("A"))
                                 .ty(ir::Type::Custom(
                                     ir::CustomTypeRef::builder()
-                                        .ident(ir::DottedIdent::from("A"))
+                                        .ident(ir::QualifiedIdent::from("A"))
                                         .ty(ir::CustomType::Table)
                                         .build(),
                                 ))
@@ -1147,7 +1151,7 @@ struct Vector3 {
                                 .ident(ir::Ident::from("B"))
                                 .ty(ir::Type::Custom(
                                     ir::CustomTypeRef::builder()
-                                        .ident(ir::DottedIdent::from("B"))
+                                        .ident(ir::QualifiedIdent::from("B"))
                                         .ty(ir::CustomType::Table)
                                         .build(),
                                 ))
@@ -1157,14 +1161,14 @@ struct Vector3 {
                 ),
                 ir::Node::Table(
                     ir::Table::builder()
-                        .ident(ir::DottedIdent::from("Z"))
+                        .ident(ir::QualifiedIdent::from("Z"))
                         .fields(vec![
                             // Synthetic union enum type!
                             ir::Field::builder()
                                 .ident(ir::Ident::from("a_or_b_type"))
                                 .ty(ir::Type::Custom(
                                     ir::CustomTypeRef::builder()
-                                        .ident(ir::DottedIdent::from("AorBType"))
+                                        .ident(ir::QualifiedIdent::from("AorBType"))
                                         .ty(ir::CustomType::Enum {
                                             values: vec![
                                                 ir::EnumVal::builder()
@@ -1187,14 +1191,14 @@ struct Vector3 {
                                 .ident(ir::Ident::from("a_or_b"))
                                 .ty(ir::Type::Custom(
                                     ir::CustomTypeRef::builder()
-                                        .ident(ir::DottedIdent::from("AorB"))
+                                        .ident(ir::QualifiedIdent::from("AorB"))
                                         .ty(ir::CustomType::Union {
-                                            enum_ident: ir::DottedIdent::from("AorBType"),
+                                            enum_ident: ir::QualifiedIdent::from("AorBType"),
                                             variants: vec![
                                                 ir::UnionVariant {
                                                     ty: ir::Type::Custom(
                                                         ir::CustomTypeRef::builder()
-                                                            .ident(ir::DottedIdent::from("A"))
+                                                            .ident(ir::QualifiedIdent::from("A"))
                                                             .ty(ir::CustomType::Table)
                                                             .build(),
                                                     ),
@@ -1203,7 +1207,7 @@ struct Vector3 {
                                                 ir::UnionVariant {
                                                     ty: ir::Type::Custom(
                                                         ir::CustomTypeRef::builder()
-                                                            .ident(ir::DottedIdent::from("B"))
+                                                            .ident(ir::QualifiedIdent::from("B"))
                                                             .ty(ir::CustomType::Table)
                                                             .build(),
                                                     ),
@@ -1245,14 +1249,14 @@ rpc_service Greeter {
         let expected = ir::Root {
             nodes: vec![ir::Node::Namespace(
                 ir::Namespace::builder()
-                    .ident(ir::DottedIdent::parse_str("foo"))
+                    .ident(ir::QualifiedIdent::parse_str("foo"))
                     .nodes(vec![ir::Node::Namespace(
                         ir::Namespace::builder()
-                            .ident(ir::DottedIdent::parse_str("foo.bar"))
+                            .ident(ir::QualifiedIdent::parse_str("foo.bar"))
                             .nodes(vec![
                                 ir::Node::Table(
                                     ir::Table::builder()
-                                        .ident(ir::DottedIdent::parse_str("foo.bar.HelloMsg"))
+                                        .ident(ir::QualifiedIdent::parse_str("foo.bar.HelloMsg"))
                                         .root_type(true)
                                         .fields(vec![ir::Field::builder()
                                             .ident(ir::Ident::from("val"))
@@ -1262,13 +1266,13 @@ rpc_service Greeter {
                                 ),
                                 ir::Node::Table(
                                     ir::Table::builder()
-                                        .ident(ir::DottedIdent::parse_str("foo.bar.HelloReply"))
+                                        .ident(ir::QualifiedIdent::parse_str("foo.bar.HelloReply"))
                                         .root_type(true)
                                         .fields(vec![ir::Field::builder()
                                             .ident(ir::Ident::from("message"))
                                             .ty(ir::Type::Custom(
                                                 ir::CustomTypeRef::builder()
-                                                    .ident(ir::DottedIdent::parse_str(
+                                                    .ident(ir::QualifiedIdent::parse_str(
                                                         "foo.bar.HelloMsg",
                                                     ))
                                                     .ty(ir::CustomType::Table)
@@ -1279,14 +1283,14 @@ rpc_service Greeter {
                                 ),
                                 ir::Node::Rpc(
                                     ir::Rpc::builder()
-                                        .ident(ir::DottedIdent::parse_str("foo.bar.Greeter"))
+                                        .ident(ir::QualifiedIdent::parse_str("foo.bar.Greeter"))
                                         .methods(vec![ir::RpcMethod::builder()
                                             .ident("SayHello")
                                             .snake_ident("say_hello")
-                                            .request_type(ir::DottedIdent::parse_str(
+                                            .request_type(ir::QualifiedIdent::parse_str(
                                                 "foo.bar.HelloMsg",
                                             ))
-                                            .response_type(ir::DottedIdent::parse_str(
+                                            .response_type(ir::QualifiedIdent::parse_str(
                                                 "foo.bar.HelloReply",
                                             ))
                                             .build()])

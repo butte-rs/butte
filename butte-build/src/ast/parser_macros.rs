@@ -69,7 +69,7 @@ mod default_value_tests {
 macro_rules! namespace {
     ($path:path) => {
         $crate::ast::types::Namespace::builder()
-            .ident($crate::dotted_ident_from_path_string!($path))
+            .ident($crate::qualified_ident_from_path_string!($path))
             .build()
     };
 }
@@ -176,7 +176,7 @@ macro_rules! field {
         $crate::ast::types::Field::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .ty($crate::ast::types::Type::Array(Box::new(
-                $crate::ast::types::Type::Ident($crate::dotted_ident_from_path_string!($ty)),
+                $crate::ast::types::Type::Ident($crate::qualified_ident_from_path_string!($ty)),
             )))
             .build()
     };
@@ -184,7 +184,7 @@ macro_rules! field {
         $crate::ast::types::Field::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .ty($crate::ast::types::Type::Ident(
-                $crate::dotted_ident_from_path_string!($ty),
+                $crate::qualified_ident_from_path_string!($ty),
             ))
             .build()
     };
@@ -216,7 +216,7 @@ macro_rules! field {
         $crate::ast::types::Field::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .ty($crate::ast::types::Type::Array(Box::new(
-                $crate::ast::types::Type::Ident($crate::dotted_ident_from_path_string!($ty)),
+                $crate::ast::types::Type::Ident($crate::qualified_ident_from_path_string!($ty)),
             )))
             .metadata(Some($crate::ast::types::Metadata::from(vec![ $($meta),* ])))
             .build()
@@ -225,7 +225,7 @@ macro_rules! field {
         $crate::ast::types::Field::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .ty($crate::ast::types::Type::Ident(
-                $crate::dotted_ident_from_path_string!($ty),
+                $crate::qualified_ident_from_path_string!($ty),
             ))
             .metadata(Some($crate::ast::types::Metadata::from(vec![ $($meta),* ])))
             .build()
@@ -233,9 +233,9 @@ macro_rules! field {
 }
 
 #[macro_export]
-macro_rules! dotted_ident_from_path_string {
+macro_rules! qualified_ident_from_path_string {
     ($expr:expr) => {
-        $crate::ast::types::DottedIdent::from(
+        $crate::ast::types::QualifiedIdent::from(
             stringify!($expr)
                 .split("::")
                 .map(Ident::from)
@@ -285,16 +285,16 @@ macro_rules! method {
     (fn $method_name:ident($req_ty:ident) -> $resp_ty:ident, [ $($meta:expr),* ]) => {
         $crate::ast::types::RpcMethod::builder()
             .id($crate::ast::types::Ident::from(stringify!($method_name)))
-            .request_type($crate::dotted_ident_from_path_string!($req_ty))
-            .response_type($crate::dotted_ident_from_path_string!($resp_ty))
+            .request_type($crate::qualified_ident_from_path_string!($req_ty))
+            .response_type($crate::qualified_ident_from_path_string!($resp_ty))
             .metadata(Some($crate::ast::types::Metadata::from(vec![ $($meta),* ])))
             .build()
     };
     (fn $method_name:ident($req_ty:ident) -> $resp_ty:ident) => {
         $crate::ast::types::RpcMethod::builder()
             .id($crate::ast::types::Ident::from(stringify!($method_name)))
-            .request_type($crate::dotted_ident_from_path_string!($req_ty))
-            .response_type($crate::dotted_ident_from_path_string!($resp_ty))
+            .request_type($crate::qualified_ident_from_path_string!($req_ty))
+            .response_type($crate::qualified_ident_from_path_string!($resp_ty))
             .build()
     };
 }

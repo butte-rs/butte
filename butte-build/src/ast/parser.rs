@@ -509,13 +509,13 @@ mod include_tests {
     }
 }
 
-pub fn dotted_ident(input: &str) -> IResult<&str, DottedIdent> {
+pub fn qualified_ident(input: &str) -> IResult<&str, QualifiedIdent> {
     map(
         separated_nonempty_list(
             delimited(comment_or_space0, tag("."), comment_or_space0),
             ident,
         ),
-        DottedIdent::from,
+        QualifiedIdent::from,
     )(input)
 }
 
@@ -525,7 +525,7 @@ pub fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
             doc_comment,
             delimited(
                 tag("namespace"),
-                delimited(comment_or_space1, dotted_ident, comment_or_space0),
+                delimited(comment_or_space1, qualified_ident, comment_or_space0),
                 semicolon,
             ),
         )),
@@ -852,7 +852,9 @@ foo // bar
         let result = field_decl(input);
         let expected = Field::builder()
             .id("foo")
-            .ty(Type::Ident(DottedIdent::from(vec![Ident::from("MyEnum")])))
+            .ty(Type::Ident(QualifiedIdent::from(vec![Ident::from(
+                "MyEnum",
+            )])))
             .default_value(Some(default_value!("Foo")))
             .build();
         assert_successful_parse!(result, expected);
@@ -958,13 +960,13 @@ rpc_service Greeter {
 }
 
 #[cfg(test)]
-mod dotted_ident_tests {
+mod qualified_ident_tests {
     use super::*;
 
     #[test]
-    fn test_simple_dotted_ident() {
-        let result = dotted_ident("a.b");
-        let expected = DottedIdent::from(vec![Ident::from("a"), Ident::from("b")]);
+    fn test_simple_qualified_ident() {
+        let result = qualified_ident("a.b");
+        let expected = QualifiedIdent::from(vec![Ident::from("a"), Ident::from("b")]);
         assert_successful_parse!(result, expected);
     }
 }
@@ -975,13 +977,13 @@ pub fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
             terminated(ident, comment_or_space0),
             delimited(
                 left_paren,
-                delimited(comment_or_space0, dotted_ident, comment_or_space0),
+                delimited(comment_or_space0, qualified_ident, comment_or_space0),
                 right_paren,
             ),
             preceded(
                 delimited(comment_or_space0, colon, comment_or_space0),
                 terminated(
-                    tuple((dotted_ident, preceded(comment_or_space0, metadata))),
+                    tuple((qualified_ident, preceded(comment_or_space0, metadata))),
                     terminated(comment_or_space0, semicolon),
                 ),
             ),
@@ -1080,7 +1082,7 @@ pub fn type_(input: &str) -> IResult<&str, Type> {
             delimited(left_square_bracket, type_, right_square_bracket),
             |t| Type::from([t]),
         ),
-        map(dotted_ident, Type::Ident),
+        map(qualified_ident, Type::Ident),
     ))(input)
 }
 

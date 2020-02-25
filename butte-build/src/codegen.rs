@@ -673,7 +673,7 @@ impl ToTokens for ast::Comment<'_> {
     }
 }
 
-impl ToTokens for ast::DottedIdent<'_> {
+impl ToTokens for ast::QualifiedIdent<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let parts = &self.parts;
         debug_assert!(!self.parts.is_empty());
@@ -694,7 +694,7 @@ impl ToTokens for ast::DottedIdent<'_> {
     }
 }
 
-impl ToTokens for ir::DottedIdent<'_> {
+impl ToTokens for ir::QualifiedIdent<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let parts = &self.parts;
         debug_assert!(!self.parts.is_empty());
