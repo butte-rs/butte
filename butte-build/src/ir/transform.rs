@@ -43,6 +43,7 @@ impl<'a> Builder<'a> {
             ast::Element::Object(..) => unimplemented!(),
         })
     }
+
     fn new_namespace(&mut self, ns: &ast::Namespace<'a>, pos: usize) -> Result<bool> {
         self.current_namespace = Some(ns.clone());
         self.nodes.insert(

@@ -455,7 +455,7 @@ impl ToTokens for ir::Table<'_> {
                         #[inline]
                         pub fn #snake_name(&self) -> Result<#ty_ret, butte::Error> {
                             Ok(match self.#type_snake_name()? {
-                              #(#names_to_enum_variant),*,
+                              #(#names_to_enum_variant,)*
                               #enum_ident::None => return Err(butte::Error::RequiredFieldMissing(#snake_name_str))
                             })
                         }
@@ -484,7 +484,7 @@ impl ToTokens for ir::Table<'_> {
                         #[inline]
                         pub fn #snake_name(&self) -> Result<Option<#ty_ret>, butte::Error> {
                             Ok(match self.#type_snake_name()? {
-                              #(#names_to_enum_variant),*,
+                              #(#names_to_enum_variant,)*
                               None | Some(#enum_ident::None) => None
                             })
                         }
@@ -826,7 +826,7 @@ impl ToTokens for ir::Enum<'_> {
                 type Error = butte::Error;
                 fn try_from(value: #base_type) -> Result<Self, Self::Error> {
                     match value {
-                        #(#from_base_to_enum_variants),*,
+                        #(#from_base_to_enum_variants,)*
                         _ => Err(butte::Error::UnknownEnumVariant)
                     }
                 }
@@ -910,7 +910,7 @@ impl ToTokens for ir::Union<'_> {
             impl #union_id<'_> {
                 pub fn get_type(&self) -> #enum_id {
                     match self {
-                        #(#names_to_enum_variant),*,
+                        #(#names_to_enum_variant),*
                     }
                 }
             }
