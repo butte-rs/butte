@@ -113,7 +113,7 @@ pub struct FileIdentifier<'a> {
 /// A namespace in which one or more schema elements resides.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, From, TypedBuilder)]
 pub struct Namespace<'a> {
-    pub ident: DottedIdent<'a>,
+    pub ident: QualifiedIdent<'a>,
 
     #[builder(default)]
     pub doc: Comment<'a>,
@@ -214,10 +214,10 @@ pub struct RpcMethod<'a> {
     pub id: Ident<'a>,
 
     /// The request type of the method.
-    pub request_type: DottedIdent<'a>,
+    pub request_type: QualifiedIdent<'a>,
 
     /// The response type of the method.
-    pub response_type: DottedIdent<'a>,
+    pub response_type: QualifiedIdent<'a>,
 
     /// Method metadata.
     #[builder(default)]
@@ -253,7 +253,7 @@ pub enum Type<'a> {
     Float64,
     String,
     Array(Box<Type<'a>>),
-    Ident(DottedIdent<'a>),
+    Ident(QualifiedIdent<'a>),
 }
 
 impl Type<'_> {
@@ -413,7 +413,7 @@ pub struct Ident<'a> {
 
 /// An identifier composed of `Ident`s separated by dots.
 #[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
-pub struct DottedIdent<'a> {
+pub struct QualifiedIdent<'a> {
     pub parts: Vec<Ident<'a>>,
 }
 

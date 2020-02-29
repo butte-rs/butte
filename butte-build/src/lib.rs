@@ -3,10 +3,8 @@ mod compile;
 
 mod macros;
 
-#[cfg(test)]
-mod parser_macros;
+pub mod ast;
+pub mod ir;
 
-pub mod parser;
-pub mod types;
-
+pub(crate) use crate::ast::parser;
 pub use crate::compile::{compile_fbs, compile_fbs_generic};

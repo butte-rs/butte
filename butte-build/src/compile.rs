@@ -1,3 +1,7 @@
+use crate::{
+    codegen::{CodeGenerator, RpcGenerator},
+    ir::Builder,
+};
 /// Compile flatbuffers files
 use std::io::{self, Write};
 use std::{
@@ -6,12 +10,12 @@ use std::{
 };
 
 use anyhow::{anyhow, Result};
-use quote::ToTokens;
 
 /// Generate Rust code for a single flatbuffer schema file from arbitrary input and to arbitrary
 /// output.
 pub fn compile_fbs_generic(
     ugly: bool,
+    rpc_gen: Option<Box<dyn RpcGenerator>>,
     mut input: Box<dyn io::Read>,
     mut output: Box<dyn io::Write>,
 ) -> Result<()> {
@@ -19,10 +23,19 @@ pub fn compile_fbs_generic(
     input.read_to_string(&mut schema_text)?;
 
     // parse the schema
-    let (_, schema) =
+    let (rest, schema) =
         crate::parser::schema_decl(schema_text.as_str()).map_err(|_| anyhow!("parse failed"))?;
+    if !rest.is_empty() {
+        return Err(anyhow!(
+            "Parse was incomplete: not parsed: {}...",
+            &rest[..30]
+        ));
+    }
+    let root = Builder::build(schema).map_err(|e| anyhow!("semantic analysis failed, {}", e))?;
 
-    let code = format!("{}", schema.to_token_stream());
+    let mut generator = CodeGenerator { root, rpc_gen };
+
+    let code = format!("{}", generator.build_token_stream());
 
     let text_output = if !ugly {
         let mut cmd = Command::new("rustfmt")
@@ -58,6 +71,7 @@ pub fn compile_fbs(path: impl AsRef<Path>) -> Result<()> {
     let ugly = false;
     compile_fbs_generic(
         ugly,
+        None,
         Box::new(std::fs::File::open(path_ref)?),
         Box::new(std::fs::File::create(output_path)?),
     )?;

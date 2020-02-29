@@ -34,6 +34,12 @@ pub trait Follow<'a> {
     fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error>;
 }
 
+pub trait FollowBuf {
+    type Buf: std::convert::AsRef<[u8]>;
+    type Inner;
+    fn follow_buf(buf: Self::Buf, loc: usize) -> Result<Self::Inner, Error>;
+}
+
 /// Execute a follow as a top-level function.
 #[allow(dead_code)]
 #[inline]

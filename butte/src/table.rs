@@ -15,53 +15,84 @@
  * limitations under the License.
  */
 
-use crate::{follow::Follow, primitives::*, vtable::VTable, Error};
+use crate::{
+    follow::{Follow, FollowBuf},
+    primitives::*,
+    vtable::VTable,
+    Error,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Table<'a> {
-    pub buf: &'a [u8],
+pub struct Table<B> {
+    pub buf: B,
     pub loc: usize,
 }
 
-impl<'a> Table<'a> {
+impl<B> Table<B> {
     #[inline]
-    pub fn new(buf: &'a [u8], loc: usize) -> Self {
+    pub fn new(buf: B, loc: usize) -> Self {
         Table { buf, loc }
     }
-    #[inline]
-    pub fn vtable(&self) -> Result<VTable<'a>, Error> {
-        <BackwardsSOffset<VTable<'a>>>::follow(self.buf, self.loc)
+}
+
+impl<B> Table<B>
+where
+    B: std::convert::AsRef<[u8]>,
+{
+    pub fn get_root(buf: B) -> Result<Self, Error> {
+        Ok(<ForwardsUOffset<Self>>::follow_buf(buf, 0)?)
     }
+
+    pub fn get_size_prefixed_root(buf: B) -> Result<Self, Error> {
+        Ok(<SkipSizePrefix<ForwardsUOffset<Self>>>::follow_buf(buf, 0)?)
+    }
+
+    pub fn vtable<'a>(&'a self) -> Result<VTable<'a>, Error> {
+        <BackwardsSOffset<VTable<'a>>>::follow(self.buf.as_ref(), self.loc)
+    }
+
     #[inline]
-    pub fn get<T: Follow<'a> + 'a>(
-        &self,
+    pub fn get<'a, T: Follow<'a> + 'a>(
+        &'a self,
         slot_byte_loc: VOffsetT,
     ) -> Result<Option<T::Inner>, Error> {
         let v_offset = self.vtable()?.get(slot_byte_loc)?;
         if let Some(v_offset) = v_offset {
             let o = v_offset as usize;
-            <T>::follow(self.buf, self.loc + o).map(Some)
+            <T>::follow(self.buf.as_ref(), self.loc + o).map(Some)
         } else {
             Ok(None)
         }
     }
 }
 
-impl<'a> Follow<'a> for Table<'a> {
-    type Inner = Table<'a>;
+impl<B> FollowBuf for Table<B>
+where
+    B: std::convert::AsRef<[u8]>,
+{
+    type Buf = B;
+    type Inner = Table<B>;
     #[inline]
-    fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
-        Ok(Table { buf, loc })
+    fn follow_buf(buf: Self::Buf, loc: usize) -> Result<Self::Inner, Error> {
+        Ok(Table::new(buf, loc))
     }
 }
 
 #[inline]
-pub fn get_root<'a, T: Follow<'a> + 'a>(data: &'a [u8]) -> Result<T::Inner, Error> {
-    <ForwardsUOffset<T>>::follow(data, 0)
+pub fn get_root<T, B>(data: B) -> Result<T::Inner, Error>
+where
+    T: FollowBuf<Buf = B>,
+    B: std::convert::AsRef<[u8]>,
+{
+    <ForwardsUOffset<T>>::follow_buf(data, 0)
 }
 #[inline]
-pub fn get_size_prefixed_root<'a, T: Follow<'a> + 'a>(data: &'a [u8]) -> Result<T::Inner, Error> {
-    <SkipSizePrefix<ForwardsUOffset<T>>>::follow(data, 0)
+pub fn get_size_prefixed_root<T, B>(data: B) -> Result<T::Inner, Error>
+where
+    T: FollowBuf<Buf = B>,
+    B: std::convert::AsRef<[u8]>,
+{
+    <SkipSizePrefix<ForwardsUOffset<T>>>::follow_buf(data, 0)
 }
 #[inline]
 pub fn buffer_has_identifier(data: &[u8], ident: &str, size_prefixed: bool) -> Result<bool, Error> {

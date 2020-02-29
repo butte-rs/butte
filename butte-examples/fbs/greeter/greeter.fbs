@@ -2,31 +2,48 @@
 /// Useful for getting a greeting back!
 namespace foo.bar;
 
-table HelloReply {
-  message: string (required);
-}
 
 table HelloRequest {
-  name: string;
+  name: string (required);
+}
+
+table HelloReply {
+  message: string ;
 }
 
 table ManyHellosRequest {
-  name: string;
+  name: string (required);
   num_greetings: int;
 }
 
-namespace baz.buzz;
-
-table FooBar {
-  name: string;
-  my_foo: Foo = A;
+union EitherHello {
+  HelloReply, HelloRequest
 }
+
+table EitherHelloRequest {
+  something_required: EitherHello (required);
+  something: EitherHello;
+}
+
+
+table HelloRequestArray {
+  requests: [HelloRequest];
+}
+
+namespace baz.buzz;
 
 enum Foo : int32 {
   A,
   B,
   C
 }
+
+table FooBar {
+  name: string;
+  my_foo: Foo = A;
+}
+
+
 
 /// A greeter service!
 /// ... with a multiline doc comment?!

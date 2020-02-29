@@ -19,7 +19,7 @@ use std::{marker::PhantomData, mem::size_of, ops::Deref};
 
 use crate::{
     endian_scalar::{emplace_scalar, read_scalar, read_scalar_at},
-    follow::Follow,
+    follow::{Follow, FollowBuf},
     push::Push,
     Error,
 };
@@ -142,15 +142,6 @@ impl<T> Push for WIPOffset<T> {
     }
 }
 
-impl<T> Push for ForwardsUOffset<T> {
-    type Output = Self;
-
-    #[inline(always)]
-    fn push(&self, dst: &mut [u8], rest: &[u8]) {
-        self.value().push(dst, rest);
-    }
-}
-
 /// ForwardsUOffset is used by Follow to traverse a FlatBuffer: the pointer
 /// is incremented by the value contained in this type.
 #[derive(Debug)]
@@ -175,13 +166,48 @@ impl<T> ForwardsUOffset<T> {
     }
 }
 
-impl<'a, T: Follow<'a>> Follow<'a> for ForwardsUOffset<T> {
+impl<'a, T> Follow<'a> for ForwardsUOffset<T>
+where
+    T: Follow<'a>,
+{
     type Inner = T::Inner;
     #[inline(always)]
     fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
-        let slice = buf.get(loc..loc + SIZE_UOFFSET).ok_or(Error::OutOfBounds)?;
-        let off = read_scalar::<u32>(slice)? as usize;
+        let off = {
+            let slice = buf.get(loc..loc + SIZE_UOFFSET).ok_or(Error::OutOfBounds)?;
+            read_scalar::<u32>(slice)? as usize
+        };
         T::follow(buf, loc + off)
+    }
+}
+
+impl<'a, T> FollowBuf for ForwardsUOffset<T>
+where
+    T: FollowBuf,
+    <T as FollowBuf>::Buf: std::convert::AsRef<[u8]>,
+{
+    type Inner = T::Inner;
+    type Buf = <T as FollowBuf>::Buf;
+
+    #[inline(always)]
+    fn follow_buf(buf: Self::Buf, loc: usize) -> Result<Self::Inner, Error> {
+        let off = {
+            let slice = buf
+                .as_ref()
+                .get(loc..loc + SIZE_UOFFSET)
+                .ok_or(Error::OutOfBounds)?;
+            read_scalar::<u32>(slice)? as usize
+        };
+        T::follow_buf(buf, loc + off)
+    }
+}
+
+impl<T> Push for ForwardsUOffset<T> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn push(&self, dst: &mut [u8], rest: &[u8]) {
+        self.value().push(dst, rest);
     }
 }
 
@@ -253,6 +279,20 @@ impl<'a, T: Follow<'a> + 'a> Follow<'a> for SkipSizePrefix<T> {
     #[inline(always)]
     fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
         T::follow(buf, loc + SIZE_SIZEPREFIX)
+    }
+}
+
+impl<'a, T> FollowBuf for SkipSizePrefix<T>
+where
+    T: FollowBuf,
+    <T as FollowBuf>::Buf: std::convert::AsRef<[u8]>,
+{
+    type Inner = T::Inner;
+    type Buf = <T as FollowBuf>::Buf;
+
+    #[inline(always)]
+    fn follow_buf(buf: Self::Buf, loc: usize) -> Result<Self::Inner, Error> {
+        T::follow_buf(buf, loc + SIZE_SIZEPREFIX)
     }
 }
 

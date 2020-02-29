@@ -46,7 +46,7 @@ pub use crate::{
         byte_swap_f32, byte_swap_f64, emplace_scalar, read_scalar, read_scalar_at, EndianScalar,
     },
     error::Error,
-    follow::{Follow, FollowStart},
+    follow::{Follow, FollowBuf, FollowStart},
     primitives::*,
     push::Push,
     table::{buffer_has_identifier, get_root, get_size_prefixed_root, Table},
