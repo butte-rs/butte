@@ -429,7 +429,7 @@ pub struct UnionVariant<'a> {
 ///
 /// Can be either taken from a schema, or generated synthetically,
 /// in which case an owned version of the ident is used.
-#[derive(Debug, Clone, PartialEq, Hash, Eq, AsRef, From)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq, PartialOrd, Ord, AsRef, From)]
 pub struct Ident<'a> {
     pub raw: Cow<'a, str>,
 }
@@ -470,7 +470,7 @@ impl<'a> Display for Ident<'a> {
 }
 
 /// An identifier composed of `Ident`s separated by dots.
-#[derive(Default, Debug, Clone, PartialEq, Hash, Eq, From)]
+#[derive(Default, Debug, Clone, PartialEq, Hash, Eq, PartialOrd, Ord, From)]
 pub struct QualifiedIdent<'a> {
     pub parts: Vec<Ident<'a>>,
 }
