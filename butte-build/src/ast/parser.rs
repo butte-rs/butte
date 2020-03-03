@@ -1555,6 +1555,27 @@ table HelloReply {
         let expected = table!(HelloReply, [field!(message, String)]);
         assert_successful_parse!(result, expected);
     }
+
+    #[test]
+    fn test_table_with_default_enum_value() {
+        let input = "\
+table HelloReply {
+    message_type: MessageType = UNKNOWN;
+}";
+        let result = table_decl(input);
+        let expected = Table::builder()
+            .id(Ident::from("HelloReply"))
+            .fields(vec![Field::builder()
+                .id("message_type")
+                .ty(Type::Ident(QualifiedIdent::from(vec![Ident::from(
+                    "MessageType",
+                )])))
+                .default_value(Some(default_value!("UNKNOWN")))
+                .build()])
+            .build();
+
+        assert_successful_parse!(result, expected);
+    }
 }
 
 /// A decimal integer constant
