@@ -631,9 +631,12 @@ mod attribute_tests {
 pub fn enum_body(input: &str) -> IResult<&str, Vec<EnumVal>> {
     delimited(
         delimited(comment_or_space0, left_brace, comment_or_space0),
-        separated_nonempty_list(
-            delimited(comment_or_space0, comma, comment_or_space0),
-            enumval_decl,
+        terminated(
+            separated_nonempty_list(
+                delimited(comment_or_space0, comma, comment_or_space0),
+                enumval_decl,
+            ),
+            opt(tuple((comment_or_space0, comma, comment_or_space0))),
         ),
         preceded(comment_or_space0, right_brace),
     )(input)
@@ -682,6 +685,15 @@ mod enum_tests {
     #[test]
     fn test_simple_enum() {
         let input = "enum MyEnum : int32 { foo = 1, bar }";
+        let result = enum_decl(input);
+        let expected = enum_!(MyEnum, Int32, [e_item!(foo = 1), e_item!(bar)]);
+        assert_successful_parse!(result, expected);
+    }
+
+    // Flatc tolerates trailing commas
+    #[test]
+    fn test_simple_enum_with_trailing_comma() {
+        let input = "enum MyEnum : int32 { foo = 1, bar, }";
         let result = enum_decl(input);
         let expected = enum_!(MyEnum, Int32, [e_item!(foo = 1), e_item!(bar)]);
         assert_successful_parse!(result, expected);
