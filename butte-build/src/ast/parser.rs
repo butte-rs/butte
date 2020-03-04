@@ -871,6 +871,30 @@ foo // bar
             .build();
         assert_successful_parse!(result, expected);
     }
+
+    #[test]
+    fn test_field_decl_boolean_default_value_explicit_false() {
+        let input = "foo : bool = false;";
+        let result = field_decl(input);
+        let expected = Field::builder()
+            .id("foo")
+            .ty(Type::Bool)
+            .default_value(Some(default_value!(false)))
+            .build();
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_field_decl_boolean_default_value_true() {
+        let input = "foo : bool = true;";
+        let result = field_decl(input);
+        let expected = Field::builder()
+            .id("foo")
+            .ty(Type::Bool)
+            .default_value(Some(default_value!(true)))
+            .build();
+        assert_successful_parse!(result, expected);
+    }
 }
 
 pub fn rpc_decl(input: &str) -> IResult<&str, Rpc> {
@@ -1417,6 +1441,12 @@ mod default_value_tests {
 
         let result = default_value("Foo");
         assert_successful_parse!(result, default_value!("Foo"));
+
+        let result = default_value("false");
+        assert_successful_parse!(result, default_value!(false));
+
+        let result = default_value("true");
+        assert_successful_parse!(result, default_value!(true));
     }
 }
 
@@ -1657,11 +1687,17 @@ mod hex_integer_constant_tests {
 }
 
 pub fn true_(input: &str) -> IResult<&str, BooleanConstant> {
-    value(true, |input: &str| nom::re_match!(input, r"\btrue\b"))(input)
+    value(true, |input: &str| {
+        nom::re_match!(input, r"\btrue\b")?;
+        tag("true")(input)
+    })(input)
 }
 
 pub fn false_(input: &str) -> IResult<&str, BooleanConstant> {
-    value(false, |input: &str| nom::re_match!(input, r"\bfalse\b"))(input)
+    value(false, |input: &str| {
+        nom::re_match!(input, r"\bfalse\b")?;
+        tag("false")(input)
+    })(input)
 }
 
 #[cfg(test)]
@@ -1675,6 +1711,12 @@ mod true_false_tests {
     }
 
     #[test]
+    fn test_true_semicolon() {
+        let result = true_("true;");
+        assert_successful_parse!(result, ";", true);
+    }
+
+    #[test]
     fn test_invalid_true() {
         let result = true_("truez");
         assert_failed_parse!(result, "truez", RegexpMatch);
@@ -1684,6 +1726,12 @@ mod true_false_tests {
     fn test_false() {
         let result = false_("false");
         assert_successful_parse!(result, false);
+    }
+
+    #[test]
+    fn test_false_semicolon() {
+        let result = false_("false;");
+        assert_successful_parse!(result, ";", false);
     }
 
     #[test]
