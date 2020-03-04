@@ -429,37 +429,50 @@ pub struct UnionVariant<'a> {
 ///
 /// Can be either taken from a schema, or generated synthetically,
 /// in which case an owned version of the ident is used.
-#[derive(Debug, Clone, PartialEq, Hash, Eq, PartialOrd, Ord, AsRef, From)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq, PartialOrd, Ord, AsRef)]
 pub struct Ident<'a> {
     pub raw: Cow<'a, str>,
 }
 
+impl Ident<'_> {
+    // Utility function to fix identifiers that may be invalid,
+    // e.g that contain Rust keywords and would generate invalid code
+    pub fn fix_identifier(ident: Cow<'_, str>) -> Cow<'_, str> {
+        if let Some(substitute) = super::keywords::substitute_keyword(ident.as_ref()) {
+            Cow::Borrowed(substitute)
+        } else {
+            ident
+        }
+    }
+}
+
 impl<'a> From<ast::Ident<'a>> for Ident<'a> {
     fn from(ident: ast::Ident<'a>) -> Self {
-        Self {
-            raw: Cow::Borrowed(ident.raw),
-        }
+        Ident::from(Cow::Borrowed(ident.raw))
     }
 }
 
 impl<'a> From<&ast::Ident<'a>> for Ident<'a> {
     fn from(ident: &ast::Ident<'a>) -> Self {
-        Self {
-            raw: Cow::Borrowed(ident.raw),
-        }
+        Ident::from(Cow::Borrowed(ident.raw))
     }
 }
 impl<'a> From<&'a str> for Ident<'a> {
     fn from(s: &'a str) -> Self {
-        Self {
-            raw: Cow::Borrowed(s),
-        }
+        Ident::from(Cow::Borrowed(s))
     }
 }
 
 impl<'a> From<String> for Ident<'a> {
     fn from(s: String) -> Self {
-        Self { raw: Cow::Owned(s) }
+        Ident::from(Cow::Owned(s))
+    }
+}
+
+impl<'a> From<Cow<'a, str>> for Ident<'a> {
+    fn from(raw: Cow<'a, str>) -> Self {
+        let raw = Ident::fix_identifier(raw);
+        Self { raw }
     }
 }
 
