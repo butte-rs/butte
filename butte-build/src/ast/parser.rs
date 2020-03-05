@@ -631,9 +631,12 @@ mod attribute_tests {
 pub fn enum_body(input: &str) -> IResult<&str, Vec<EnumVal>> {
     delimited(
         delimited(comment_or_space0, left_brace, comment_or_space0),
-        separated_nonempty_list(
-            delimited(comment_or_space0, comma, comment_or_space0),
-            enumval_decl,
+        terminated(
+            separated_nonempty_list(
+                delimited(comment_or_space0, comma, comment_or_space0),
+                enumval_decl,
+            ),
+            opt(tuple((comment_or_space0, comma, comment_or_space0))),
         ),
         preceded(comment_or_space0, right_brace),
     )(input)
@@ -682,6 +685,15 @@ mod enum_tests {
     #[test]
     fn test_simple_enum() {
         let input = "enum MyEnum : int32 { foo = 1, bar }";
+        let result = enum_decl(input);
+        let expected = enum_!(MyEnum, Int32, [e_item!(foo = 1), e_item!(bar)]);
+        assert_successful_parse!(result, expected);
+    }
+
+    // Flatc tolerates trailing commas
+    #[test]
+    fn test_simple_enum_with_trailing_comma() {
+        let input = "enum MyEnum : int32 { foo = 1, bar, }";
         let result = enum_decl(input);
         let expected = enum_!(MyEnum, Int32, [e_item!(foo = 1), e_item!(bar)]);
         assert_successful_parse!(result, expected);
@@ -856,6 +868,30 @@ foo // bar
                 "MyEnum",
             )])))
             .default_value(Some(default_value!("Foo")))
+            .build();
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_field_decl_boolean_default_value_explicit_false() {
+        let input = "foo : bool = false;";
+        let result = field_decl(input);
+        let expected = Field::builder()
+            .id("foo")
+            .ty(Type::Bool)
+            .default_value(Some(default_value!(false)))
+            .build();
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_field_decl_boolean_default_value_true() {
+        let input = "foo : bool = true;";
+        let result = field_decl(input);
+        let expected = Field::builder()
+            .id("foo")
+            .ty(Type::Bool)
+            .default_value(Some(default_value!(true)))
             .build();
         assert_successful_parse!(result, expected);
     }
@@ -1405,6 +1441,12 @@ mod default_value_tests {
 
         let result = default_value("Foo");
         assert_successful_parse!(result, default_value!("Foo"));
+
+        let result = default_value("false");
+        assert_successful_parse!(result, default_value!(false));
+
+        let result = default_value("true");
+        assert_successful_parse!(result, default_value!(true));
     }
 }
 
@@ -1555,6 +1597,27 @@ table HelloReply {
         let expected = table!(HelloReply, [field!(message, String)]);
         assert_successful_parse!(result, expected);
     }
+
+    #[test]
+    fn test_table_with_default_enum_value() {
+        let input = "\
+table HelloReply {
+    message_type: MessageType = UNKNOWN;
+}";
+        let result = table_decl(input);
+        let expected = Table::builder()
+            .id(Ident::from("HelloReply"))
+            .fields(vec![Field::builder()
+                .id("message_type")
+                .ty(Type::Ident(QualifiedIdent::from(vec![Ident::from(
+                    "MessageType",
+                )])))
+                .default_value(Some(default_value!("UNKNOWN")))
+                .build()])
+            .build();
+
+        assert_successful_parse!(result, expected);
+    }
 }
 
 /// A decimal integer constant
@@ -1624,11 +1687,17 @@ mod hex_integer_constant_tests {
 }
 
 pub fn true_(input: &str) -> IResult<&str, BooleanConstant> {
-    value(true, |input: &str| nom::re_match!(input, r"\btrue\b"))(input)
+    value(true, |input: &str| {
+        nom::re_match!(input, r"\btrue\b")?;
+        tag("true")(input)
+    })(input)
 }
 
 pub fn false_(input: &str) -> IResult<&str, BooleanConstant> {
-    value(false, |input: &str| nom::re_match!(input, r"\bfalse\b"))(input)
+    value(false, |input: &str| {
+        nom::re_match!(input, r"\bfalse\b")?;
+        tag("false")(input)
+    })(input)
 }
 
 #[cfg(test)]
@@ -1642,6 +1711,12 @@ mod true_false_tests {
     }
 
     #[test]
+    fn test_true_semicolon() {
+        let result = true_("true;");
+        assert_successful_parse!(result, ";", true);
+    }
+
+    #[test]
     fn test_invalid_true() {
         let result = true_("truez");
         assert_failed_parse!(result, "truez", RegexpMatch);
@@ -1651,6 +1726,12 @@ mod true_false_tests {
     fn test_false() {
         let result = false_("false");
         assert_successful_parse!(result, false);
+    }
+
+    #[test]
+    fn test_false_semicolon() {
+        let result = false_("false;");
+        assert_successful_parse!(result, ";", false);
     }
 
     #[test]

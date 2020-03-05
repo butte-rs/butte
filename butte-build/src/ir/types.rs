@@ -193,6 +193,18 @@ impl<'a> Type<'a> {
         }
     }
 
+    pub fn is_array(&self) -> bool {
+        match self {
+            Type::Array(..) => true,
+            _ => false,
+        }
+    }
+
+    // Is it a complex type that will trigger Clippy warnings
+    pub fn is_complex(&self) -> bool {
+        self.is_array()
+    }
+
     // For unions, we generate an enum type "companion" that's just a simple
     // ubyte based enum with all the union variants, + None (default 0)
     //
@@ -417,37 +429,50 @@ pub struct UnionVariant<'a> {
 ///
 /// Can be either taken from a schema, or generated synthetically,
 /// in which case an owned version of the ident is used.
-#[derive(Debug, Clone, PartialEq, Hash, Eq, AsRef, From)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq, PartialOrd, Ord, AsRef)]
 pub struct Ident<'a> {
     pub raw: Cow<'a, str>,
 }
 
+impl Ident<'_> {
+    // Utility function to fix identifiers that may be invalid,
+    // e.g that contain Rust keywords and would generate invalid code
+    pub fn fix_identifier(ident: Cow<'_, str>) -> Cow<'_, str> {
+        if let Some(substitute) = super::keywords::substitute_keyword(ident.as_ref()) {
+            Cow::Borrowed(substitute)
+        } else {
+            ident
+        }
+    }
+}
+
 impl<'a> From<ast::Ident<'a>> for Ident<'a> {
     fn from(ident: ast::Ident<'a>) -> Self {
-        Self {
-            raw: Cow::Borrowed(ident.raw),
-        }
+        Ident::from(Cow::Borrowed(ident.raw))
     }
 }
 
 impl<'a> From<&ast::Ident<'a>> for Ident<'a> {
     fn from(ident: &ast::Ident<'a>) -> Self {
-        Self {
-            raw: Cow::Borrowed(ident.raw),
-        }
+        Ident::from(Cow::Borrowed(ident.raw))
     }
 }
 impl<'a> From<&'a str> for Ident<'a> {
     fn from(s: &'a str) -> Self {
-        Self {
-            raw: Cow::Borrowed(s),
-        }
+        Ident::from(Cow::Borrowed(s))
     }
 }
 
 impl<'a> From<String> for Ident<'a> {
     fn from(s: String) -> Self {
-        Self { raw: Cow::Owned(s) }
+        Ident::from(Cow::Owned(s))
+    }
+}
+
+impl<'a> From<Cow<'a, str>> for Ident<'a> {
+    fn from(raw: Cow<'a, str>) -> Self {
+        let raw = Ident::fix_identifier(raw);
+        Self { raw }
     }
 }
 
@@ -458,7 +483,7 @@ impl<'a> Display for Ident<'a> {
 }
 
 /// An identifier composed of `Ident`s separated by dots.
-#[derive(Default, Debug, Clone, PartialEq, Hash, Eq, From)]
+#[derive(Default, Debug, Clone, PartialEq, Hash, Eq, PartialOrd, Ord, From)]
 pub struct QualifiedIdent<'a> {
     pub parts: Vec<Ident<'a>>,
 }

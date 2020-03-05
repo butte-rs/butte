@@ -279,10 +279,18 @@ impl ToTokens for ir::Table<'_> {
                 } else {
                     quote!(Option<#arg_ty>)
                 };
+
+                let allow_type_complexity = if ty.is_complex() {
+                    quote!(#[allow(clippy::type_complexity)])
+                } else {
+                    quote!()
+                };
+
                 // Scalar or enum fields can have a default value
                 let default_doc = to_default_value_doc(&ty, default_value);
                 quote! {
                     #default_doc
+                    #allow_type_complexity
                     pub #field_id: #arg_ty
                 }
             },
@@ -370,6 +378,12 @@ impl ToTokens for ir::Table<'_> {
             let offset = offset_id(field);
             let field_offset = quote!(#struct_id::#offset);
 
+            let allow_type_complexity = if ty.is_complex() {
+                quote!(#[allow(clippy::type_complexity)])
+            } else {
+                quote!()
+            };
+
             let arg_ty = if ty.is_union() {
                 quote!(butte::WIPOffset<butte::UnionWIPOffset>)
             } else {
@@ -390,6 +404,7 @@ impl ToTokens for ir::Table<'_> {
 
             quote! {
                 #[inline]
+                #allow_type_complexity
                 fn #add_method_name(&mut self, #field_id: #arg_ty) {
                     #body;
                 }
@@ -411,6 +426,12 @@ impl ToTokens for ir::Table<'_> {
             let ty = &field.ty;
             let ty_ret = to_type_token(ty, &quote!('_), &quote!(butte::ForwardsUOffset), false);
             let ty_wrapped = to_type_token(ty, &quote!('_), &quote!(butte::ForwardsUOffset), true);
+
+            let allow_type_complexity = if ty.is_complex() {
+                quote!(#[allow(clippy::type_complexity)])
+            } else {
+                quote!()
+            };
 
             if ty.is_union() {
                 let (union_ident, enum_ident, variants) = match ty {
@@ -493,6 +514,7 @@ impl ToTokens for ir::Table<'_> {
             } else if field.metadata.required {
                 quote! {
                     #[inline]
+                    #allow_type_complexity
                     pub fn #snake_name(&self) -> Result<#ty_ret, butte::Error> {
                         Ok(self.table
                             .get::<#ty_wrapped>(#struct_id::#offset_name)?
@@ -502,6 +524,7 @@ impl ToTokens for ir::Table<'_> {
             } else {
                 quote! {
                     #[inline]
+                    #allow_type_complexity
                     pub fn #snake_name(&self) -> Result<Option<#ty_ret>, butte::Error> {
                         self.table
                             .get::<#ty_wrapped>(#struct_id::#offset_name)
@@ -935,10 +958,6 @@ impl<'a> CodeGenerator<'a> {
     pub fn build_tokens(&mut self, tokens: &mut TokenStream) {
         let mut rpc_gen = self.rpc_gen.take();
 
-        (quote! {
-            #[allow(clippy::type_complexity)]
-        })
-        .to_tokens(tokens);
         for node in &self.root.nodes {
             self.node_to_tokens(node, &mut rpc_gen, tokens);
         }

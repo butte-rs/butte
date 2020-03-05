@@ -30,7 +30,7 @@ impl<'a> Builder<'a> {
     fn new_element(&mut self, element: &ElementInput<'a>) -> Result<bool> {
         let pos = element.pos;
         Ok(match &element.el {
-            ast::Element::Namespace(n) => self.new_namespace(n, pos)?,
+            ast::Element::Namespace(n) => self.new_namespace(n)?,
             ast::Element::Table(t) => self.new_table(t, pos)?,
             ast::Element::Struct(s) => self.new_struct(s, pos)?,
             ast::Element::Enum(e) => self.new_enum(e, pos)?,
@@ -44,16 +44,8 @@ impl<'a> Builder<'a> {
         })
     }
 
-    fn new_namespace(&mut self, ns: &ast::Namespace<'a>, pos: usize) -> Result<bool> {
+    fn new_namespace(&mut self, ns: &ast::Namespace<'a>) -> Result<bool> {
         self.current_namespace = Some(ns.clone());
-        self.nodes.insert(
-            pos,
-            vec![ir::Node::Namespace(
-                ir::Namespace::builder()
-                    .ident(ir::QualifiedIdent::from(ns.ident.clone()))
-                    .build(),
-            )],
-        );
 
         Ok(true)
     }
@@ -546,20 +538,19 @@ impl<'a> Builder<'a> {
             })
             .collect();
 
-        // handle namespaces
-        let (namespaces, rest): (Vec<_>, Vec<_>) =
-            nodes.into_iter().partition(ir::Node::is_namespace);
-
-        let mut namespaces: Vec<_> = namespaces
-            .into_iter()
-            .map(|ns| ns.into_namespace().expect("should be a namespace"))
-            .collect();
-
-        let mut elements: HashMap<_, _> = rest
+        let mut elements: HashMap<_, _> = nodes
             .into_iter()
             .map(|n| (n.namespace(), n))
             .into_group_map()
             .into_iter()
+            .collect();
+
+        let namespaces_idents: std::collections::BTreeSet<_> =
+            elements.keys().cloned().filter_map(|id| id).collect();
+
+        let mut namespaces: Vec<_> = namespaces_idents
+            .into_iter()
+            .map(|i| ir::Namespace::builder().ident(i).build())
             .collect();
 
         for ns in namespaces.iter_mut() {
