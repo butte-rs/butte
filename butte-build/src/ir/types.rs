@@ -193,6 +193,18 @@ impl<'a> Type<'a> {
         }
     }
 
+    pub fn is_array(&self) -> bool {
+        match self {
+            Type::Array(..) => true,
+            _ => false,
+        }
+    }
+
+    // Is it a complex type that will trigger Clippy warnings
+    pub fn is_complex(&self) -> bool {
+        self.is_array()
+    }
+
     // For unions, we generate an enum type "companion" that's just a simple
     // ubyte based enum with all the union variants, + None (default 0)
     //
