@@ -7,8 +7,8 @@ pub mod greeter {
 
 fn main() -> Result<()> {
     use greeter::foo::bar::{
-        EitherHello, EitherHelloRequest, EitherHelloRequestArgs, EitherHelloType, HelloReply,
-        HelloReplyArgs, HelloRequest, HelloRequestArgs,
+        butte_gen::EitherHelloType, EitherHello, EitherHelloRequest, EitherHelloRequestArgs,
+        HelloReply, HelloReplyArgs, HelloRequest, HelloRequestArgs,
     };
     let mut builder = fb::FlatBufferBuilder::new();
     let name = builder.create_string("John");

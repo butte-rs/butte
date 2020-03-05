@@ -3,10 +3,9 @@ use anyhow::{anyhow, Result};
 use heck::SnakeCase;
 use itertools::Itertools;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     convert::TryFrom,
 };
-
 #[derive(Default)]
 pub struct Builder<'a> {
     current_namespace: Option<ast::Namespace<'a>>,
@@ -24,6 +23,43 @@ struct ElementInput<'a> {
 enum CustomTypeStatus<'a> {
     TableDeclared,
     Defined(ir::CustomType<'a>),
+}
+
+// Utility struct to help build and stack namespaces
+#[derive(Clone, Debug, PartialEq)]
+struct NamespaceBuf<'a> {
+    ident: ir::QualifiedIdent<'a>,
+    namespaces: BTreeMap<ir::Ident<'a>, NamespaceBuf<'a>>,
+    nodes: Vec<ir::Node<'a>>,
+}
+
+impl<'a> NamespaceBuf<'a> {
+    fn new(ident: ir::QualifiedIdent<'a>) -> Self {
+        Self {
+            ident,
+            namespaces: BTreeMap::new(),
+            nodes: Vec::new(),
+        }
+    }
+
+    pub fn depth(&self) -> usize {
+        self.ident.parts.len()
+    }
+
+    fn into_namespace(self) -> ir::Namespace<'a> {
+        let ident = self.ident;
+        let nodes = self
+            .namespaces
+            .into_iter()
+            .map(|(_, v)| ir::Node::Namespace(v.into_namespace()))
+            .chain(self.nodes)
+            .collect();
+        ir::Namespace { ident, nodes }
+    }
+
+    fn into_node(self) -> ir::Node<'a> {
+        ir::Node::Namespace(self.into_namespace())
+    }
 }
 
 impl<'a> Builder<'a> {
@@ -290,8 +326,10 @@ impl<'a> Builder<'a> {
 
     fn generate_enum_for_union(&mut self, u: &ast::Union<'a>) -> Result<ir::Enum<'a>> {
         let enum_ident = format!("{}Type", u.id.raw);
-        let ident = &self.make_fully_qualified_ident(ir::Ident::from(enum_ident));
-
+        let ident = &self.make_fully_qualified_ident_relative(ir::QualifiedIdent::from(vec![
+            ir::Ident::from("butte_gen"),
+            ir::Ident::from(enum_ident),
+        ]));
         if let Some(CustomTypeStatus::Defined(..)) = self.types.get(ident) {
             return Err(anyhow!("type already defined: {}", ident));
         };
@@ -410,6 +448,18 @@ impl<'a> Builder<'a> {
             .map(|ns| ir::QualifiedIdent::from(&ns.ident))
             .unwrap_or_default();
         fqi.parts.push(ident);
+        fqi
+    }
+
+    fn make_fully_qualified_ident_relative(
+        &self,
+        ident: ir::QualifiedIdent<'a>,
+    ) -> ir::QualifiedIdent<'a> {
+        let mut fqi = self
+            .current_namespace()
+            .map(|ns| ir::QualifiedIdent::from(&ns.ident))
+            .unwrap_or_default();
+        fqi.parts.extend(ident.parts);
         fqi
     }
 
@@ -545,14 +595,14 @@ impl<'a> Builder<'a> {
             .into_iter()
             .collect();
 
-        let namespaces_idents: std::collections::BTreeSet<_> =
-            elements.keys().cloned().filter_map(|id| id).collect();
+        let namespaces_idents: BTreeSet<_> = elements.keys().cloned().filter_map(|id| id).collect();
 
         let mut namespaces: Vec<_> = namespaces_idents
             .into_iter()
-            .map(|i| ir::Namespace::builder().ident(i).build())
+            .map(NamespaceBuf::new)
             .collect();
 
+        // Add children to namespace
         for ns in namespaces.iter_mut() {
             if let Some(children) = elements.remove(&Some(ns.ident.clone())) {
                 ns.nodes = children;
@@ -560,19 +610,29 @@ impl<'a> Builder<'a> {
         }
 
         // Build top-level with namespaces and elements without namespaces
-        let mut nodes = Vec::new();
+        let mut nodes = BTreeMap::new();
         // stack namespaces
-        for mut ns in namespaces.into_iter() {
-            let ns_depth = ns.ident.parts.len();
-            for i in (1..ns_depth).rev() {
-                let mut parent = ir::Namespace::builder()
-                    .ident(ir::QualifiedIdent::from(ns.ident.parts[..i].to_vec()))
-                    .build();
-                parent.nodes.push(ir::Node::Namespace(ns));
-                ns = parent;
+        for ns in namespaces.into_iter() {
+            let mut parent = &mut nodes;
+
+            // Handle intermediate levels
+            for i in 1..ns.depth() {
+                parent = &mut parent
+                    .entry(ns.ident.parts[i - 1].clone())
+                    .or_insert_with(|| {
+                        NamespaceBuf::new(ir::QualifiedIdent::from(ns.ident.parts[..i].to_vec()))
+                    })
+                    .namespaces;
             }
-            nodes.push(ir::Node::Namespace(ns));
+            // Add leaf
+            if let Some(n) = parent.get_mut(ns.ident.simple()) {
+                n.nodes = ns.nodes;
+            } else {
+                parent.insert(ns.ident.simple().clone(), ns);
+            }
         }
+
+        let mut nodes: Vec<_> = nodes.into_iter().map(|(_, v)| v.into_node()).collect();
 
         // Are there elements without namespace?
         if let Some(rest) = elements.remove(&None) {
@@ -669,6 +729,66 @@ table HelloReply {
                             )])
                             .build(),
                     )])
+                    .build(),
+            )],
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn namespace_stacking() {
+        let input = "\
+namespace foo.bar;
+
+table HelloReply {
+    message:string;
+}
+
+namespace foo.baz;
+
+table GoodbyeReply {
+    message:string;
+}
+";
+        let (_, schema) = crate::parser::schema_decl(input).unwrap();
+        let actual = Builder::build(schema).unwrap();
+        let expected = ir::Root {
+            nodes: vec![ir::Node::Namespace(
+                ir::Namespace::builder()
+                    .ident(ir::QualifiedIdent::parse_str("foo"))
+                    .nodes(vec![
+                        ir::Node::Namespace(
+                            ir::Namespace::builder()
+                                .ident(ir::QualifiedIdent::parse_str("foo.bar"))
+                                .nodes(vec![ir::Node::Table(
+                                    ir::Table::builder()
+                                        .ident(ir::QualifiedIdent::parse_str("foo.bar.HelloReply"))
+                                        .fields(vec![ir::Field::builder()
+                                            .ident(ir::Ident::from("message"))
+                                            .ty(ir::Type::String)
+                                            .build()])
+                                        .build(),
+                                )])
+                                .build(),
+                        ),
+                        ir::Node::Namespace(
+                            ir::Namespace::builder()
+                                .ident(ir::QualifiedIdent::parse_str("foo.baz"))
+                                .nodes(vec![ir::Node::Table(
+                                    ir::Table::builder()
+                                        .ident(ir::QualifiedIdent::parse_str(
+                                            "foo.baz.GoodbyeReply",
+                                        ))
+                                        .fields(vec![ir::Field::builder()
+                                            .ident(ir::Ident::from("message"))
+                                            .ty(ir::Type::String)
+                                            .build()])
+                                        .build(),
+                                )])
+                                .build(),
+                        ),
+                    ])
                     .build(),
             )],
         };
@@ -1008,6 +1128,25 @@ struct Vector3 {
         let actual = Builder::build(schema).unwrap();
         let expected = ir::Root {
             nodes: vec![
+                ir::Node::Namespace(
+                    ir::Namespace::builder()
+                        .ident(ir::QualifiedIdent::parse_str("butte_gen"))
+                        .nodes(vec![ir::Node::Enum(
+                            ir::Enum::builder()
+                                .ident(ir::QualifiedIdent::parse_str("butte_gen.AorBType"))
+                                .base_type(ir::EnumBaseType::UByte)
+                                .values(vec![
+                                    ir::EnumVal::builder()
+                                        .ident(ir::Ident::from("None"))
+                                        .value(Some(0))
+                                        .build(),
+                                    ir::EnumVal::builder().ident(ir::Ident::from("A")).build(),
+                                    ir::EnumVal::builder().ident(ir::Ident::from("B")).build(),
+                                ])
+                                .build(),
+                        )])
+                        .build(),
+                ),
                 ir::Node::Table(
                     ir::Table::builder()
                         .ident(ir::QualifiedIdent::from("A"))
@@ -1026,24 +1165,10 @@ struct Vector3 {
                             .build()])
                         .build(),
                 ),
-                ir::Node::Enum(
-                    ir::Enum::builder()
-                        .ident(ir::QualifiedIdent::from("AorBType"))
-                        .base_type(ir::EnumBaseType::UByte)
-                        .values(vec![
-                            ir::EnumVal::builder()
-                                .ident(ir::Ident::from("None"))
-                                .value(Some(0))
-                                .build(),
-                            ir::EnumVal::builder().ident(ir::Ident::from("A")).build(),
-                            ir::EnumVal::builder().ident(ir::Ident::from("B")).build(),
-                        ])
-                        .build(),
-                ),
                 ir::Node::Union(
                     ir::Union::builder()
                         .ident(ir::QualifiedIdent::from("AorB"))
-                        .enum_ident(ir::QualifiedIdent::from("AorBType"))
+                        .enum_ident(ir::QualifiedIdent::parse_str("butte_gen.AorBType"))
                         .variants(vec![
                             ir::UnionVariant::builder()
                                 .ident(ir::Ident::from("A"))
@@ -1093,6 +1218,25 @@ struct Vector3 {
         let actual = Builder::build(schema).unwrap();
         let expected = ir::Root {
             nodes: vec![
+                ir::Node::Namespace(
+                    ir::Namespace::builder()
+                        .ident(ir::QualifiedIdent::parse_str("butte_gen"))
+                        .nodes(vec![ir::Node::Enum(
+                            ir::Enum::builder()
+                                .ident(ir::QualifiedIdent::parse_str("butte_gen.AorBType"))
+                                .base_type(ir::EnumBaseType::UByte)
+                                .values(vec![
+                                    ir::EnumVal::builder()
+                                        .ident(ir::Ident::from("None"))
+                                        .value(Some(0))
+                                        .build(),
+                                    ir::EnumVal::builder().ident(ir::Ident::from("A")).build(),
+                                    ir::EnumVal::builder().ident(ir::Ident::from("B")).build(),
+                                ])
+                                .build(),
+                        )])
+                        .build(),
+                ),
                 ir::Node::Table(
                     ir::Table::builder()
                         .ident(ir::QualifiedIdent::from("A"))
@@ -1111,24 +1255,10 @@ struct Vector3 {
                             .build()])
                         .build(),
                 ),
-                ir::Node::Enum(
-                    ir::Enum::builder()
-                        .ident(ir::QualifiedIdent::from("AorBType"))
-                        .base_type(ir::EnumBaseType::UByte)
-                        .values(vec![
-                            ir::EnumVal::builder()
-                                .ident(ir::Ident::from("None"))
-                                .value(Some(0))
-                                .build(),
-                            ir::EnumVal::builder().ident(ir::Ident::from("A")).build(),
-                            ir::EnumVal::builder().ident(ir::Ident::from("B")).build(),
-                        ])
-                        .build(),
-                ),
                 ir::Node::Union(
                     ir::Union::builder()
                         .ident(ir::QualifiedIdent::from("AorB"))
-                        .enum_ident(ir::QualifiedIdent::from("AorBType"))
+                        .enum_ident(ir::QualifiedIdent::parse_str("butte_gen.AorBType"))
                         .variants(vec![
                             ir::UnionVariant::builder()
                                 .ident(ir::Ident::from("A"))
@@ -1160,7 +1290,7 @@ struct Vector3 {
                                 .ident(ir::Ident::from("a_or_b_type"))
                                 .ty(ir::Type::Custom(
                                     ir::CustomTypeRef::builder()
-                                        .ident(ir::QualifiedIdent::from("AorBType"))
+                                        .ident(ir::QualifiedIdent::parse_str("butte_gen.AorBType"))
                                         .ty(ir::CustomType::Enum {
                                             values: vec![
                                                 ir::EnumVal::builder()
@@ -1185,7 +1315,9 @@ struct Vector3 {
                                     ir::CustomTypeRef::builder()
                                         .ident(ir::QualifiedIdent::from("AorB"))
                                         .ty(ir::CustomType::Union {
-                                            enum_ident: ir::QualifiedIdent::from("AorBType"),
+                                            enum_ident: ir::QualifiedIdent::parse_str(
+                                                "butte_gen.AorBType",
+                                            ),
                                             variants: vec![
                                                 ir::UnionVariant {
                                                     ty: ir::Type::Custom(
