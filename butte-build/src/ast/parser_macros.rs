@@ -248,7 +248,7 @@ macro_rules! qualified_ident_from_path_string {
 macro_rules! table {
     ($name:ident, $doc:expr, [ $($field:expr),* ]) => {
         $crate::ast::types::Table::builder()
-            .doc($doc)
+            .doc(($doc).into())
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .fields(vec![ $($field),* ]).build()
     };
