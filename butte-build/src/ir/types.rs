@@ -84,6 +84,12 @@ pub struct Namespace<'a> {
     pub nodes: Vec<Node<'a>>,
 }
 
+impl Namespace<'_> {
+    pub fn depth(&self) -> usize {
+        self.nodes.len()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Table<'a> {
     /// The table's ident
@@ -434,7 +440,7 @@ pub struct Ident<'a> {
     pub raw: Cow<'a, str>,
 }
 
-impl Ident<'_> {
+impl<'a> Ident<'a> {
     // Utility function to fix identifiers that may be invalid,
     // e.g that contain Rust keywords and would generate invalid code
     pub fn fix_identifier(ident: Cow<'_, str>) -> Cow<'_, str> {
@@ -442,6 +448,14 @@ impl Ident<'_> {
             Cow::Borrowed(substitute)
         } else {
             ident
+        }
+    }
+
+    // Purposefully create an ident named after a keyword
+    // e.g to use `crate` or `super` for a type path
+    fn keyword(keyword: &str) -> Ident<'_> {
+        Ident {
+            raw: Cow::Borrowed(keyword),
         }
     }
 }
@@ -488,7 +502,14 @@ pub struct QualifiedIdent<'a> {
     pub parts: Vec<Ident<'a>>,
 }
 
+// Clippy wants `is_empty` if there's `len` but it makes no sense here
+// since we never have an empty `QualifiedIdent`
+#[allow(clippy::len_without_is_empty)]
 impl<'a> QualifiedIdent<'a> {
+    pub fn len(&self) -> usize {
+        self.parts.len()
+    }
+
     pub fn namespace(&self) -> Option<QualifiedIdent<'a>> {
         if self.parts.len() > 1 {
             Some(Self {
@@ -499,14 +520,41 @@ impl<'a> QualifiedIdent<'a> {
         }
     }
 
+    pub fn relative(&self, namespace: Option<&QualifiedIdent<'a>>) -> QualifiedIdent<'a> {
+        if let Some(ns) = namespace {
+            let common_prefix_len = self
+                .parts
+                .iter()
+                .zip(ns.parts.iter())
+                .take_while(|(a, b)| a == b)
+                .count();
+
+            let parts = std::iter::repeat(Ident::keyword("super"))
+                .take(ns.len() - common_prefix_len)
+                .chain(self.parts[common_prefix_len..].to_vec())
+                .collect();
+            QualifiedIdent { parts }
+        } else {
+            self.clone()
+        }
+    }
+
     pub fn simple(&self) -> &Ident<'a> {
         &self.parts[self.parts.len() - 1]
     }
 
     // Assumes correctly formed ident
+    // Keywords are allowed
+    // Use only for tests
+    #[cfg(test)]
     pub fn parse_str(s: &'a str) -> Self {
         QualifiedIdent {
-            parts: s.split('.').map(Ident::from).collect(),
+            parts: s
+                .split('.')
+                .map(|p| Ident {
+                    raw: Cow::Borrowed(p),
+                })
+                .collect(),
         }
     }
 }
@@ -539,5 +587,60 @@ impl<'a> Display for QualifiedIdent<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use itertools::Itertools;
         write!(f, "{}", self.parts.iter().join("."))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    pub fn test_relative_ident_from_same_namespace() {
+        let id = QualifiedIdent::parse_str("foo.bar.Baz");
+        let ns = id.namespace(); // ns = "foo.bar"
+        let expected = QualifiedIdent::parse_str("Baz");
+        let actual = id.relative(ns.as_ref());
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    pub fn test_relative_ident_from_root_namespace() {
+        let id = QualifiedIdent::parse_str("foo.bar.Baz");
+        let ns = None; // "root" namespace
+        let expected = id.clone(); // absolute id is unchanged
+        let actual = id.relative(ns.as_ref());
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    pub fn test_relative_ident_from_parent_namespace() {
+        let id = QualifiedIdent::parse_str("foo.bar.Baz");
+        let ns = Some(QualifiedIdent::parse_str("foo"));
+        let expected = QualifiedIdent::parse_str("bar.Baz");
+        let actual = id.relative(ns.as_ref());
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    pub fn test_relative_ident_from_child_namespace() {
+        let id = QualifiedIdent::parse_str("foo.bar.Baz");
+        let ns = Some(QualifiedIdent::parse_str("foo.bar.bim"));
+        let expected = QualifiedIdent::parse_str("super.Baz");
+        let actual = id.relative(ns.as_ref());
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    pub fn test_relative_ident_from_sibling_namespace() {
+        let id = QualifiedIdent::parse_str("foo.bar.bam.Baz");
+        let ns = Some(QualifiedIdent::parse_str("foo.bar.bim"));
+        let expected = QualifiedIdent::parse_str("super.bam.Baz");
+        let actual = id.relative(ns.as_ref());
+
+        assert_eq!(expected, actual);
     }
 }

@@ -98,6 +98,7 @@ impl ToTokens for ast::Scalar {
 
 /// Convert a `types::Type` to a type with the supplied wrapper for reference types
 fn to_type_token(
+    context_namespace: Option<&ir::QualifiedIdent<'_>>,
     ty: &ir::Type,
     lifetime: &TokenStream,
     wrap_refs_types: &TokenStream,
@@ -156,7 +157,8 @@ fn to_type_token(
         }
         ir::Type::Array(ty) => {
             // Arrays wrap the wrapping tokens with Vector
-            let component_token = to_type_token(ty, lifetime, wrap_refs_types, true);
+            let component_token =
+                to_type_token(context_namespace, ty, lifetime, wrap_refs_types, true);
             let ty = quote!(butte::Vector<#lifetime, #component_token>);
 
             let wrap_tokens = wrap_refs_types.into_token_stream();
@@ -168,6 +170,7 @@ fn to_type_token(
         }
         ir::Type::Custom(ir::CustomTypeRef { ident, ty }) => {
             // Scalar types are never wrapped and have no lifetimes
+            let ident = &ident.relative(context_namespace);
             if ty.is_scalar() {
                 quote!(#ident)
             } else {
@@ -229,13 +232,15 @@ fn offset_id(field: &ir::Field<'_>) -> impl ToTokens {
 impl ToTokens for ir::Table<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self {
-            ident: struct_id,
+            ident: struct_qualified_id,
             fields,
             doc,
             ..
         } = self;
 
-        let struct_id = struct_id.simple(); // discard namespace
+        let table_ns = struct_qualified_id.namespace();
+        let table_ns_ref = table_ns.as_ref();
+        let struct_id = struct_qualified_id.simple(); // discard namespace
         let raw_struct_name = struct_id.raw.as_ref();
 
         let builder_add_calls = fields.iter().map(
@@ -270,7 +275,13 @@ impl ToTokens for ir::Table<'_> {
                 let arg_ty = if ty.is_union() {
                     quote!(butte::WIPOffset<butte::UnionWIPOffset>)
                 } else {
-                    let arg_ty = to_type_token(ty, &quote!('a), &quote!(butte::WIPOffset), true);
+                    let arg_ty = to_type_token(
+                        table_ns_ref,
+                        ty,
+                        &quote!('a),
+                        &quote!(butte::WIPOffset),
+                        true,
+                    );
                     quote!(#arg_ty)
                 };
 
@@ -323,7 +334,7 @@ impl ToTokens for ir::Table<'_> {
                      default_value,
                      ..
                  }| {
-                    let arg_ty = to_type_token(ty, &quote!(), &quote!(), false);
+                    let arg_ty = to_type_token(table_ns_ref, ty, &quote!(), &quote!(), false);
                     if !ty.is_scalar() {
                         // optional non-scalar types default to None
                         quote!(#field_id: None)
@@ -387,7 +398,13 @@ impl ToTokens for ir::Table<'_> {
             let arg_ty = if ty.is_union() {
                 quote!(butte::WIPOffset<butte::UnionWIPOffset>)
             } else {
-                let arg_ty = to_type_token(ty, &quote!('b), &quote!(butte::WIPOffset), true);
+                let arg_ty = to_type_token(
+                    table_ns_ref,
+                    ty,
+                    &quote!('b),
+                    &quote!(butte::WIPOffset),
+                    true,
+                );
                 quote!(#arg_ty)
             };
 
@@ -424,8 +441,8 @@ impl ToTokens for ir::Table<'_> {
             let snake_name_str = snake_name.to_string();
             let offset_name = offset_id(field);
             let ty = &field.ty;
-            let ty_ret = to_type_token(ty, &quote!('_), &quote!(butte::ForwardsUOffset), false);
-            let ty_wrapped = to_type_token(ty, &quote!('_), &quote!(butte::ForwardsUOffset), true);
+            let ty_ret = to_type_token(table_ns_ref, ty, &quote!('_), &quote!(butte::ForwardsUOffset), false);
+            let ty_wrapped = to_type_token(table_ns_ref, ty, &quote!('_), &quote!(butte::ForwardsUOffset), true);
 
             let allow_type_complexity = if ty.is_complex() {
                 quote!(#[allow(clippy::type_complexity)])
@@ -448,7 +465,8 @@ impl ToTokens for ir::Table<'_> {
                     _ => panic!("type is union"),
                 };
 
-                let enum_ident = enum_ident.simple();
+                let union_ident = union_ident.relative(table_ns_ref);
+                let enum_ident = enum_ident.relative(table_ns_ref);
 
                 let type_snake_name =
                     format_ident!("{}_type", field.ident.as_ref().to_snake_case());
@@ -459,7 +477,7 @@ impl ToTokens for ir::Table<'_> {
                              ident: variant_ident,
                              ty: variant_ty,
                          }| {
-                            let variant_ty_wrapped = to_type_token(
+                            let variant_ty_wrapped = to_type_token(table_ns_ref,
                                 variant_ty,
                                 &quote!('_),
                                 &quote!(butte::ForwardsUOffset),
@@ -487,7 +505,7 @@ impl ToTokens for ir::Table<'_> {
                              ident: variant_ident,
                              ty: variant_ty,
                          }| {
-                            let variant_ty_wrapped = to_type_token(
+                            let variant_ty_wrapped = to_type_token(table_ns_ref,
                                 variant_ty,
                                 &quote!('_),
                                 &quote!(butte::ForwardsUOffset),
@@ -696,43 +714,12 @@ impl ToTokens for ast::Comment<'_> {
     }
 }
 
-impl ToTokens for ast::QualifiedIdent<'_> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let parts = &self.parts;
-        debug_assert!(!self.parts.is_empty());
-        let code = parts.iter().map(|e| e.raw).join("::");
-        let num_parts = parts.len();
-        let path_string = if num_parts > 1 {
-            format!(
-                "{}::{}",
-                std::iter::repeat("super").take(num_parts - 1).join("::"),
-                code
-            )
-        } else {
-            code
-        };
-        syn::parse_str::<syn::Path>(&path_string)
-            .expect("Cannot parse path")
-            .to_tokens(tokens)
-    }
-}
-
 impl ToTokens for ir::QualifiedIdent<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let parts = &self.parts;
         debug_assert!(!self.parts.is_empty());
         let code = parts.iter().map(|e| e.raw.as_ref()).join("::");
-        let num_parts = parts.len();
-        let path_string = if num_parts > 1 {
-            format!(
-                "{}::{}",
-                std::iter::repeat("super").take(num_parts - 1).join("::"),
-                code
-            )
-        } else {
-            code
-        };
-        syn::parse_str::<syn::Path>(&path_string)
+        syn::parse_str::<syn::Path>(&code)
             .expect("Cannot parse path")
             .to_tokens(tokens)
     }
@@ -886,15 +873,17 @@ impl ToTokens for ir::Enum<'_> {
 impl ToTokens for ir::Union<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self {
-            ident: union_id,
+            ident: union_qualified_id,
             enum_ident,
             variants,
             doc,
             ..
         } = self;
 
-        let union_id = union_id.simple();
-        let enum_id = enum_ident.simple();
+        let union_ns = union_qualified_id.namespace();
+        let union_ns_ref = union_ns.as_ref();
+        let union_id = union_qualified_id.simple();
+        let enum_id = enum_ident.relative(union_ns_ref);
 
         // the union's body definition
         let names_to_union_variant = variants.iter().map(
@@ -902,7 +891,8 @@ impl ToTokens for ir::Union<'_> {
                  ident: variant_ident,
                  ty: variant_ty,
              }| {
-                let variant_ty_token = to_type_token(variant_ty, &quote!('a), &quote!(), false);
+                let variant_ty_token =
+                    to_type_token(union_ns_ref, variant_ty, &quote!('a), &quote!(), false);
                 quote! {
                     #variant_ident(#variant_ty_token)
                 }
