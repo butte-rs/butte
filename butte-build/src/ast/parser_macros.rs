@@ -367,36 +367,40 @@ macro_rules! schema {
 
 #[macro_export]
 macro_rules! enum_ {
-    ($name:ident, $base_ty:ident, [ $($value:expr),+ ]) => {
+    ($name:ident, $base_ty:ident, [ $($value:expr),+ ]$(, $doc:literal)?) => {
         $crate::ast::types::Enum::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .base_type($crate::ast::types::Type::$base_ty)
             .values(vec![ $($value),+ ])
+            .doc(vec![ $($doc,)? ].into())
             .build()
     };
 }
 
 #[macro_export]
 macro_rules! e_item {
-    ($key:ident = $value:expr) => {
+    ($key:ident = $value:expr$(, $doc:literal)?) => {
         $crate::ast::types::EnumVal::builder()
             .id($crate::ast::types::Ident::from(stringify!($key)))
             .value(Some(($value).into()))
+            .doc(vec![ $($doc,)? ].into())
             .build()
     };
-    ($key:ident) => {
+    ($key:ident$(, $doc:literal)?) => {
         $crate::ast::types::EnumVal::builder()
             .id($crate::ast::types::Ident::from(stringify!($key)))
+            .doc(vec![ $($doc,)? ].into())
             .build()
     };
 }
 
 #[macro_export]
 macro_rules! union {
-    ($name:ident, [ $($value:expr),+ ]) => {
+    ($name:ident, [ $($value:expr),+ ]$(, $doc:literal)?) => {
         $crate::ast::types::Union::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .values(vec![ $($value),+ ])
+            .doc(vec![ $($doc,)? ].into())
             .build()
     };
 }
