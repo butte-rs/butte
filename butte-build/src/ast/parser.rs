@@ -838,6 +838,57 @@ foo // bar
     }
 
     #[test]
+    fn test_field_decl_with_doc_comment() {
+        let input = "\
+/// A really great field
+great: int64;";
+
+        let expected = field!(great, Int64, " A really great field");
+        let result = field_decl(input);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_field_decl_with_doc_and_non_doc_comment() {
+        let input = "\
+/// A really great field
+// Not part of the doc
+
+great: int64;";
+
+        let expected = field!(great, Int64, " A really great field");
+        let result = field_decl(input);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_field_decl_with_spaced_doc_comment() {
+        let input = "\
+/// A really great field
+
+great: int64;";
+
+        let expected = field!(great, Int64, " A really great field");
+        let result = field_decl(input);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_field_decl_with_space_doc_and_non_doc_comment() {
+        let input = "\
+/// A really great field
+// comment
+
+
+// Thing!
+great: int64;";
+
+        let expected = field!(great, Int64, " A really great field");
+        let result = field_decl(input);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
     fn test_field_decl() {
         let input = "foo: float64 = 2.0;";
         let result = field_decl(input);
