@@ -2338,7 +2338,7 @@ mod file_extension_tests {
 }
 
 pub fn file_identifier_decl(input: &str) -> IResult<&str, FileIdentifier> {
-    map(
+    map_res(
         tuple((
             doc_comment,
             delimited(
@@ -2347,7 +2347,7 @@ pub fn file_identifier_decl(input: &str) -> IResult<&str, FileIdentifier> {
                     comment_or_space0,
                     delimited(
                         double_quote,
-                        tuple((anychar, anychar, anychar, anychar)),
+                        nom::bytes::complete::take(4_usize),
                         double_quote,
                     ),
                     comment_or_space0,
@@ -2355,11 +2355,23 @@ pub fn file_identifier_decl(input: &str) -> IResult<&str, FileIdentifier> {
                 semicolon,
             ),
         )),
-        |(comment, (first, second, third, fourth))| {
-            FileIdentifier::builder()
+        |(comment, id)| {
+            let id_bytes = id.as_bytes();
+            let num_id_bytes = id_bytes.len();
+            if num_id_bytes != 4 {
+                return Err(nom::Err::Failure(format!(
+                    "file identifier should be 4 bytes long, got {} bytes",
+                    num_id_bytes
+                )));
+            }
+            let mut buf = [0u8; 4];
+            buf.copy_from_slice(id_bytes);
+            Ok(FileIdentifier::builder()
                 .doc(comment)
-                .id([first, second, third, fourth])
-                .build()
+                // The `anychar` combinator only matches a byte, so the conversion here cannot be
+                // incorrect if indeed that is what `anychar` does
+                .id(buf)
+                .build())
         },
     )(input)
 }
@@ -2404,6 +2416,12 @@ mod file_identifier_tests {
         let result = file_identifier_decl("file_identifier   \"ABCD\"  ;");
         let expected = FileIdentifier::builder().id(['A', 'B', 'C', 'D']).build();
         assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_file_identifier_decl_with_multibyte_char() {
+        let result = file_identifier_decl("file_identifier \"❤234\";");
+        assert_failed_parse!(result, "file_identifier \"❤234\";", MapRes);
     }
 }
 

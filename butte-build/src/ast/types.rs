@@ -104,7 +104,7 @@ pub struct FileExtension<'a> {
 /// A magic number for using flatbuffers as a file format.
 #[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
 pub struct FileIdentifier<'a> {
-    pub id: [char; 4],
+    pub id: [u8; 4],
 
     #[builder(default)]
     pub doc: Comment<'a>,
