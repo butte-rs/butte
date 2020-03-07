@@ -2349,30 +2349,44 @@ mod file_extension_tests {
     }
 
     #[test]
+    fn test_file_extension_decl_with_doc_comments() {
+        let result = file_extension_decl(
+            "\
+/// Doc1
+//
+
+/// Doc2
+file_extension \"foo\";",
+        );
+        let expected = file_ext!("foo", [" Doc1", " Doc2"]);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
     fn test_file_extension_decl() {
         let result = file_extension_decl("file_extension \"foo\";");
-        let expected = FileExtension::builder().ext("foo").build();
+        let expected = file_ext!("foo");
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_extension_decl_no_leading_space() {
         let result = file_extension_decl("file_extension\"foo\";");
-        let expected = FileExtension::builder().ext("foo").build();
+        let expected = file_ext!("foo");
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_extension_decl_trailing_space() {
         let result = file_extension_decl("file_extension \"foo\"  ;");
-        let expected = FileExtension::builder().ext("foo").build();
+        let expected = file_ext!("foo");
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_extension_decl_surrounding_space() {
         let result = file_extension_decl("file_extension   \"foo\"  ;");
-        let expected = FileExtension::builder().ext("foo").build();
+        let expected = file_ext!("foo");
         assert_successful_parse!(result, expected);
     }
 }
@@ -2426,35 +2440,48 @@ mod file_identifier_tests {
             "file_identifier // baz
             \t\t\"PAR3\"// buz!\n\t;",
         );
-        let expected = FileIdentifier::builder().id(['P', 'A', 'R', '3']).build();
+        let expected = file_id!(b"PAR3");
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_file_identifier_decl_with_doc_comments() {
+        let input = "\
+/// Some file id
+
+//
+/// Doc 2
+file_identifier \"PAR3\";";
+        let result = file_identifier_decl(input);
+        let expected = file_id!(b"PAR3", [" Some file id", " Doc 2"]);
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_identifier_decl() {
         let result = file_identifier_decl("file_identifier \"PAR3\";");
-        let expected = FileIdentifier::builder().id(['P', 'A', 'R', '3']).build();
+        let expected = file_id!(b"PAR3");
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_identifier_decl_no_leading_space() {
         let result = file_identifier_decl("file_identifier\"BAAR\";");
-        let expected = FileIdentifier::builder().id(['B', 'A', 'A', 'R']).build();
+        let expected = file_id!(b"BAAR");
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_identifier_decl_trailing_space() {
         let result = file_identifier_decl("file_identifier \"DEF1\"  ;");
-        let expected = FileIdentifier::builder().id(['D', 'E', 'F', '1']).build();
+        let expected = file_id!(b"DEF1");
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_identifier_decl_surrounding_space() {
         let result = file_identifier_decl("file_identifier   \"ABCD\"  ;");
-        let expected = FileIdentifier::builder().id(['A', 'B', 'C', 'D']).build();
+        let expected = file_id!(b"ABCD");
         assert_successful_parse!(result, expected);
     }
 
