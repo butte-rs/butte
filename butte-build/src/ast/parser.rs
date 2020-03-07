@@ -6,8 +6,8 @@ use std::convert::TryInto;
 
 #[cfg(test)]
 use crate::{
-    default_value, e_item, element as elem, enum_, field, meta, method, namespace, object as obj,
-    root_type, rpc, schema, table, union, value as val,
+    attr, default_value, e_item, element as elem, enum_, field, file_ext, file_id, meta, method,
+    namespace, object as obj, root_type, rpc, schema, table, union, value as val,
 };
 
 use hexf_parse::parse_hexf64;

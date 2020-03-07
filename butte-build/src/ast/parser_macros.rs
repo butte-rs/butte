@@ -414,7 +414,37 @@ macro_rules! root_type {
     ($name:ident$(,$doc:literal)?) => {
         $crate::ast::types::Root::builder()
             .typename($crate::ast::types::Ident::from(stringify!($name)))
-            .doc(vec![ $($doc,)? ].into())
+            .doc(vec![ $($($doc,)*)? ].into())
+            .build()
+    }
+}
+
+#[macro_export]
+macro_rules! file_ext {
+    ($ext:literal$(,[ $($doc:literal),+ ])?) => {
+        $crate::ast::types::FileExtension::builder()
+            .ext($ext)
+            .doc(vec![ $($($doc,)*)? ].into())
+            .build()
+    }
+}
+
+#[macro_export]
+macro_rules! file_id {
+    ($ext:literal$(,[ $($doc:literal),+ ])?) => {
+        $crate::ast::types::FileIdentifier::builder()
+            .id([($ext)[0usize], ($ext)[1usize], ($ext)[2usize], ($ext)[3usize]])
+            .doc(vec![ $($($doc,)*)? ].into())
+            .build()
+    }
+}
+
+#[macro_export]
+macro_rules! attr {
+    ($attr:ident$(,[ $($doc:literal),+ ])?) => {
+        $crate::ast::types::Attribute::builder()
+            .attr(stringify!($attr).into())
+            .doc(vec![$($($doc,)+)?].into())
             .build()
     }
 }
