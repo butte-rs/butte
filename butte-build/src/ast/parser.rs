@@ -848,7 +848,7 @@ union MyUnion {
 pub fn root_decl(input: &str) -> IResult<&str, Root> {
     map(
         tuple((
-            doc_comment,
+            terminated(doc_comment, comment_or_space0),
             delimited(
                 tag("root_type"),
                 delimited(comment_or_space1, ident, comment_or_space0),
@@ -866,7 +866,19 @@ mod root_tests {
     #[test]
     fn test_root_decl() {
         let result = root_decl("root_type Foo;");
-        let expected = Root::builder().typename("Foo".into()).build();
+        let expected = root_type!(Foo);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_root_decl_with_doc_comments() {
+        let input = "\
+/// I am Foo.
+// Not a doc
+
+root_type Foo;";
+        let result = root_decl(input);
+        let expected = root_type!(Foo, " I am Foo.");
         assert_successful_parse!(result, expected);
     }
 }
