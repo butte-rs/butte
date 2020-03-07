@@ -602,28 +602,28 @@ mod attribute_tests {
             "attribute// gah, an attr!
             a;",
         );
-        let expected = Attribute::builder().attr("a").build();
+        let expected = Attribute::builder().attr("a".into()).build();
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_simple_attribute_decl() {
         let result = attribute_decl("attribute a;");
-        let expected = Attribute::builder().attr("a").build();
+        let expected = Attribute::builder().attr("a".into()).build();
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_quoted_attribute_decl() {
         let result = attribute_decl("attribute \"a\";");
-        let expected = Attribute::builder().attr("a").build();
+        let expected = Attribute::builder().attr("a".into()).build();
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_attribute_decl_ws() {
         let result = attribute_decl("attribute\t\n\t my_attr\n\n\r\n;");
-        let expected = Attribute::builder().attr("my_attr").build();
+        let expected = Attribute::builder().attr("my_attr".into()).build();
         assert_successful_parse!(result, expected);
     }
 }
@@ -772,7 +772,7 @@ mod root_tests {
     #[test]
     fn test_root_decl() {
         let result = root_decl("root_type Foo;");
-        let expected = Root::builder().typename("Foo").build();
+        let expected = Root::builder().typename("Foo".into()).build();
         assert_successful_parse!(result, expected);
     }
 }
@@ -863,7 +863,7 @@ foo // bar
         let input = "foo : MyEnum = Foo;";
         let result = field_decl(input);
         let expected = Field::builder()
-            .id("foo")
+            .id("foo".into())
             .ty(Type::Ident(QualifiedIdent::from(vec![Ident::from(
                 "MyEnum",
             )])))
@@ -877,7 +877,7 @@ foo // bar
         let input = "foo : bool = false;";
         let result = field_decl(input);
         let expected = Field::builder()
-            .id("foo")
+            .id("foo".into())
             .ty(Type::Bool)
             .default_value(Some(default_value!(false)))
             .build();
@@ -889,7 +889,7 @@ foo // bar
         let input = "foo : bool = true;";
         let result = field_decl(input);
         let expected = Field::builder()
-            .id("foo")
+            .id("foo".into())
             .ty(Type::Bool)
             .default_value(Some(default_value!(true)))
             .build();
@@ -1608,7 +1608,7 @@ table HelloReply {
         let expected = Table::builder()
             .id(Ident::from("HelloReply"))
             .fields(vec![Field::builder()
-                .id("message_type")
+                .id("message_type".into())
                 .ty(Type::Ident(QualifiedIdent::from(vec![Ident::from(
                     "MessageType",
                 )])))

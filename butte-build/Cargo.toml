@@ -33,18 +33,18 @@ name = "butte"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1.0.19"
-derive_more = { version = "0.99.0", features = ["from", "as_ref"] }
+anyhow = "1.0.26"
+derive_more = { version = "0.99.3", features = ["from", "as_ref"] }
 butte = { path = "../butte" }
 heck = "0.3.1"
 hexf-parse = "0.1.0"
-itertools = "0.8"
-nom = { version = "5.0.1", features = ["regexp"] }
-proc-macro2 = "1.0"
-quote = "1.0.2"
-syn = "1.0.7"
-typed-builder = "0.4.0"
-structopt = "0.3.3"
+itertools = "0.8.2"
+nom = { version = "5.1.1", features = ["regexp"] }
+proc-macro2 = "1.0.9"
+quote = "1.0.3"
+syn = "1.0.16"
+typed-builder = "0.5.1"
+structopt = "0.3.11"
 
 [dev-dependencies]
 pretty_assertions = "0.6.1"

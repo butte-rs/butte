@@ -1409,8 +1409,8 @@ rpc_service Greeter {
                                     ir::Rpc::builder()
                                         .ident(ir::QualifiedIdent::parse_str("foo.bar.Greeter"))
                                         .methods(vec![ir::RpcMethod::builder()
-                                            .ident("SayHello")
-                                            .snake_ident("say_hello")
+                                            .ident("SayHello".into())
+                                            .snake_ident("say_hello".into())
                                             .request_type(ir::QualifiedIdent::parse_str(
                                                 "foo.bar.HelloMsg",
                                             ))

@@ -13,14 +13,14 @@ name = "greeter"
 path = "src/greeter/greeter.rs"
 
 [dependencies]
-anyhow = "1.0.19"
+anyhow = "1.0.26"
 butte-build = { path = "../butte-build" }
 butte = { path = "../butte" }
 
 [build-dependencies]
-anyhow = "1.0.19"
+anyhow = "1.0.26"
 butte-build = { path = "../butte-build" }
 
 [dev-dependencies]
-anyhow = "1.0.19"
+anyhow = "1.0.26"
 assert_cmd = "0.12.0"
