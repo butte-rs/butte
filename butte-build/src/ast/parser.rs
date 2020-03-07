@@ -1184,6 +1184,7 @@ mod qualified_ident_tests {
 pub fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
     map(
         tuple((
+            doc_comment,
             terminated(ident, comment_or_space0),
             delimited(
                 left_paren,
@@ -1198,12 +1199,13 @@ pub fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
                 ),
             ),
         )),
-        |(name, request_type, (response_type, metadata))| {
+        |(comment, name, request_type, (response_type, metadata))| {
             RpcMethod::builder()
                 .id(name)
                 .request_type(request_type)
                 .response_type(response_type)
                 .metadata(metadata)
+                .doc(comment)
                 .build()
         },
     )(input)
