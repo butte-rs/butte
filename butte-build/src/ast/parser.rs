@@ -554,7 +554,7 @@ mod namespace_tests {
 /// foo
 namespace foo;";
         let result = namespace_decl(input);
-        let expected = namespace!(foo, " foo");
+        let expected = namespace!(foo, [" foo"]);
         assert_successful_parse!(result, expected);
     }
 
@@ -565,7 +565,7 @@ namespace foo;";
 // Bar
 namespace foo;";
         let result = namespace_decl(input);
-        let expected = namespace!(foo, " foo");
+        let expected = namespace!(foo, [" foo"]);
         assert_successful_parse!(result, expected);
     }
 
@@ -578,7 +578,7 @@ namespace foo;";
 
 namespace foo;";
         let result = namespace_decl(input);
-        let expected = namespace!(foo, " foo");
+        let expected = namespace!(foo, [" foo"]);
         assert_successful_parse!(result, expected);
     }
 
@@ -739,11 +739,11 @@ enum MyEnum : int32 {
             MyEnum,
             Int32,
             [
-                e_item!(foo = 1, " Maybe it's a foo"),
-                e_item!(bar, " Could be a bar though"),
+                e_item!(foo = 1, [" Maybe it's a foo"]),
+                e_item!(bar, [" Could be a bar though"]),
                 e_item!(baz = 9)
             ],
-            " The enum!"
+            [" The enum!"]
         );
         assert_successful_parse!(result, expected);
     }
@@ -824,11 +824,11 @@ union MyUnion {
         let expected = union!(
             MyUnion,
             [
-                e_item!(foo = 1, " Maybe it's a foo"),
-                e_item!(bar, " Could be a bar though"),
+                e_item!(foo = 1, [" Maybe it's a foo"]),
+                e_item!(bar, [" Could be a bar though"]),
                 e_item!(baz = 9)
             ],
-            " Unionize!"
+            [" Unionize!"]
         );
         assert_successful_parse!(result, expected);
     }
@@ -878,7 +878,7 @@ mod root_tests {
 
 root_type Foo;";
         let result = root_decl(input);
-        let expected = root_type!(Foo, " I am Foo.");
+        let expected = root_type!(Foo, [" I am Foo."]);
         assert_successful_parse!(result, expected);
     }
 }
@@ -946,7 +946,7 @@ foo // bar
 /// A really great field
 great: int64;";
 
-        let expected = field!(great, Int64, " A really great field");
+        let expected = field!(great, Int64, [" A really great field"]);
         let result = field_decl(input);
         assert_successful_parse!(result, expected);
     }
@@ -959,7 +959,7 @@ great: int64;";
 
 great: int64;";
 
-        let expected = field!(great, Int64, " A really great field");
+        let expected = field!(great, Int64, [" A really great field"]);
         let result = field_decl(input);
         assert_successful_parse!(result, expected);
     }
@@ -971,7 +971,7 @@ great: int64;";
 
 great: int64;";
 
-        let expected = field!(great, Int64, " A really great field");
+        let expected = field!(great, Int64, [" A really great field"]);
         let result = field_decl(input);
         assert_successful_parse!(result, expected);
     }
@@ -986,7 +986,7 @@ great: int64;";
 // Thing!
 great: int64;";
 
-        let expected = field!(great, Int64, " A really great field");
+        let expected = field!(great, Int64, [" A really great field"]);
         let result = field_decl(input);
         assert_successful_parse!(result, expected);
     }
@@ -1132,21 +1132,25 @@ rpc_service Greeter {
     fn test_rpc_decl_doc_comment() {
         let input = "\
 /// A greeter service!
+// impl
+/// User facing
 rpc_service Greeter {
+  /// Hi there!
   SayHello   (HelloRequest ):HelloReply;
+  /// Multiple hi theres!
   SayManyHellos(ManyHellosRequest):HelloReply  (streaming: \"server\"  ) ;
 
 }";
         let result = rpc_decl(input);
         let expected = rpc!(
             Greeter,
-            " A greeter service!",
             [
-                method!(fn SayHello(HelloRequest) -> HelloReply),
+                method!(fn SayHello(HelloRequest) -> HelloReply, None, [ " Hi there!" ]),
                 method!(fn SayManyHellos(ManyHellosRequest) -> HelloReply, [
                     meta!(streaming, "server")
-                ])
-            ]
+                ], [ " Multiple hi theres!" ])
+            ],
+            [" A greeter service!", " User facing"]
         );
         assert_successful_parse!(result, expected);
     }
@@ -1721,12 +1725,12 @@ table HelloReply {
         let result = table_decl(input);
         let expected = table!(
             HelloReply,
-            " A response with a required field",
             [
-                field!(message, String, " Sweet, sweet message"),
-                field!(foo, [String], " A doc comment"),
+                field!(message, String, [" Sweet, sweet message"]),
+                field!(foo, [String], [" A doc comment"]),
                 field!(bar, [Float64])
-            ]
+            ],
+            [" A response with a required field"]
         );
         assert_successful_parse!(result, expected);
     }
@@ -1741,8 +1745,8 @@ table HelloReply {
         let result = table_decl(input);
         let expected = table!(
             HelloReply,
-            " A response with a required field",
-            [field!(message, String, [meta!(required)])]
+            [field!(message, String, [meta!(required)])],
+            [" A response with a required field"]
         );
         assert_successful_parse!(result, expected);
     }
@@ -1766,12 +1770,12 @@ foo :uint=3;//baz
         let result = table_decl(input);
         let expected = table!(
             HelloReply,
-            " My awesome table!",
             [
                 field!(message, String),
                 field!(foo, UInt = 3),
                 field!(bar, [Int8])
-            ]
+            ],
+            [" My awesome table!"]
         );
         assert_successful_parse!(result, expected);
     }
@@ -1790,12 +1794,12 @@ table HelloReply
         let result = table_decl(input);
         let expected = table!(
             HelloReply,
-            " My awesome table!",
             [
                 field!(message, String),
                 field!(foo, UInt = 3),
                 field!(bar, [Int8])
-            ]
+            ],
+            [" My awesome table!"]
         );
         assert_successful_parse!(result, expected);
     }
