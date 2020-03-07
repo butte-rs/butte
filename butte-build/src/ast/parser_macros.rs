@@ -264,7 +264,7 @@ macro_rules! qualified_ident_from_path_string {
         $crate::ast::types::QualifiedIdent::from(
             stringify!($expr)
                 .split("::")
-                .map(Ident::from)
+                .map($crate::ast::types::Ident::from)
                 .collect::<Vec<_>>(),
         )
     };
