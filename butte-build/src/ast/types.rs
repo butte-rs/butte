@@ -295,6 +295,9 @@ pub struct EnumVal<'a> {
     /// An optional enum value.
     #[builder(default)]
     pub value: Option<IntegerConstant>,
+
+    #[builder(default)]
+    pub doc: Comment<'a>,
 }
 
 /// Key-value pair metadata.
