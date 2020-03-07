@@ -720,6 +720,35 @@ mod enum_tests {
     }
 
     #[test]
+    fn test_enum_with_doc_comments() {
+        let input = "\
+/// The enum!
+enum MyEnum : int32 {
+    // Not a doc commment
+    /// Maybe it's a foo
+    foo = 1,
+    // Hm,
+    /// Could be a bar though
+    bar,
+
+    // Nope, it's a baz
+    baz = 9,
+}";
+        let result = enum_decl(input);
+        let expected = enum_!(
+            MyEnum,
+            Int32,
+            [
+                e_item!(foo = 1, " Maybe it's a foo"),
+                e_item!(bar, " Could be a bar though"),
+                e_item!(baz = 9)
+            ],
+            " The enum!"
+        );
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
     fn test_simple_enum() {
         let input = "enum MyEnum : int32 { foo = 1, bar }";
         let result = enum_decl(input);
@@ -772,6 +801,34 @@ mod union_tests {
         let expected = union!(
             MyUnion,
             [e_item!(foo = 1), e_item!(bar), e_item!(Baz = 234)]
+        );
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_union_with_doc_comments() {
+        let input = "\
+/// Unionize!
+union MyUnion {
+    // Not a doc commment
+    /// Maybe it's a foo
+    foo = 1,
+    // Hm,
+    /// Could be a bar though
+    bar,
+
+    // Nope, it's a baz
+    baz = 9,
+}";
+        let result = union_decl(input);
+        let expected = union!(
+            MyUnion,
+            [
+                e_item!(foo = 1, " Maybe it's a foo"),
+                e_item!(bar, " Could be a bar though"),
+                e_item!(baz = 9)
+            ],
+            " Unionize!"
         );
         assert_successful_parse!(result, expected);
     }
@@ -1213,13 +1270,16 @@ pub fn type_(input: &str) -> IResult<&str, Type> {
 /// Parse the individual items of an enum or union.
 pub fn enumval_decl(input: &str) -> IResult<&str, EnumVal> {
     let parser = tuple((
+        terminated(doc_comment, comment_or_space0),
         ident,
         opt(preceded(
             comment_or_space0,
             preceded(equals, preceded(comment_or_space0, integer_constant)),
         )),
     ));
-    map(parser, EnumVal::from)(input)
+    map(parser, |(comment, id, value)| {
+        EnumVal::builder().id(id).value(value).doc(comment).build()
+    })(input)
 }
 
 /// Parse key-value metadata pairs.
