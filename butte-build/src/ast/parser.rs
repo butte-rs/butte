@@ -17,7 +17,7 @@ use nom::{
     sequence::*, IResult,
 };
 
-use std::{path::Path, str::FromStr};
+use std::{iter::FromIterator, path::Path, str::FromStr};
 
 #[cfg(test)]
 macro_rules! assert_failed_parse {
@@ -1404,19 +1404,27 @@ pub fn scalar(input: &str) -> IResult<&str, Scalar> {
 /// Parse JSON object-like data.
 pub fn object(input: &str) -> IResult<&str, Object> {
     map(
-        delimited(
-            terminated(left_brace, comment_or_space0),
-            separated_list(
-                delimited(comment_or_space0, comma, comment_or_space0),
-                separated_pair(
-                    ident,
-                    delimited(comment_or_space0, colon, comment_or_space0),
-                    value_,
+        tuple((
+            doc_comment,
+            delimited(
+                terminated(left_brace, comment_or_space0),
+                separated_list(
+                    delimited(comment_or_space0, comma, comment_or_space0),
+                    separated_pair(
+                        ident,
+                        delimited(comment_or_space0, colon, comment_or_space0),
+                        value_,
+                    ),
                 ),
+                preceded(comment_or_space0, right_brace),
             ),
-            preceded(comment_or_space0, right_brace),
-        ),
-        Object::from,
+        )),
+        |(comment, key_value_pairs)| {
+            Object::builder()
+                .doc(comment)
+                .values(std::collections::HashMap::from_iter(key_value_pairs))
+                .build()
+        },
     )(input)
 }
 
@@ -1439,6 +1447,19 @@ mod object_tests {
         let input = "{}";
         let result = object(input);
         let expected = obj!({});
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_object_with_doc_comments() {
+        let input = "\
+/// A doc
+//
+/// Comment
+
+{}";
+        let result = object(input);
+        let expected = obj!({}, [" A doc", " Comment"]);
         assert_successful_parse!(result, expected);
     }
 
