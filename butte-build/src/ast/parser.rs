@@ -644,6 +644,19 @@ mod attribute_tests {
     }
 
     #[test]
+    fn test_attribute_decl_with_doc_comments() {
+        let input = "\
+/// An
+/// Attribute
+// implementation notes
+/// Further comments
+attribute a;";
+        let result = attribute_decl(input);
+        let expected = attr!(a, [" An", " Attribute", " Further comments"]);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
     fn test_simple_attribute_decl() {
         let result = attribute_decl("attribute a;");
         let expected = Attribute::builder().attr("a".into()).build();
