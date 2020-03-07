@@ -339,6 +339,9 @@ impl From<i32> for Scalar {
 pub struct Object<'a> {
     #[builder(default)]
     pub values: HashMap<Ident<'a>, Value<'a>>,
+
+    #[builder(default)]
+    pub doc: Comment<'a>,
 }
 
 impl<'a> From<Vec<(Ident<'a>, Value<'a>)>> for Object<'a> {

@@ -89,11 +89,15 @@ macro_rules! namespace {
 
 #[macro_export]
 macro_rules! object {
-    ({ $($key:ident => $value:tt),* }) => {
-        $crate::ast::types::Object::from(
-            vec![ $(($crate::ast::types::Ident::from(stringify!($key)), $crate::value!($value))),* ]
-        )
-    };
+    ({ $($key:ident => $value:tt),* }$(,[ $($doc:literal),+ ])?) => {{
+        use std::iter::FromIterator;
+        $crate::ast::types::Object::builder()
+            .values(std::collections::HashMap::from_iter(vec![
+                $(($crate::ast::types::Ident::from(stringify!($key)), $crate::value!($value))),*
+            ]))
+            .doc(vec![$($($doc,)+)?].into())
+            .build()
+    }};
 }
 
 #[macro_export]
