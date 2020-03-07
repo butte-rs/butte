@@ -525,7 +525,7 @@ pub fn qualified_ident(input: &str) -> IResult<&str, QualifiedIdent> {
 pub fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
     map(
         tuple((
-            terminated(doc_comment, comment_or_space0),
+            doc_comment,
             delimited(
                 tag("namespace"),
                 delimited(comment_or_space1, qualified_ident, comment_or_space0),
@@ -848,7 +848,7 @@ union MyUnion {
 pub fn root_decl(input: &str) -> IResult<&str, Root> {
     map(
         tuple((
-            terminated(doc_comment, comment_or_space0),
+            doc_comment,
             delimited(
                 tag("root_type"),
                 delimited(comment_or_space1, ident, comment_or_space0),
@@ -887,7 +887,7 @@ pub fn field_decl(input: &str) -> IResult<&str, Field> {
     map(
         terminated(
             tuple((
-                terminated(doc_comment, comment_or_space0),
+                doc_comment,
                 terminated(ident, tuple((comment_or_space0, colon, comment_or_space0))),
                 type_,
                 opt(preceded(
@@ -1282,7 +1282,7 @@ pub fn type_(input: &str) -> IResult<&str, Type> {
 /// Parse the individual items of an enum or union.
 pub fn enumval_decl(input: &str) -> IResult<&str, EnumVal> {
     let parser = tuple((
-        terminated(doc_comment, comment_or_space0),
+        doc_comment,
         ident,
         opt(preceded(
             comment_or_space0,
@@ -2414,7 +2414,10 @@ pub fn raw_doc_comment(input: &str) -> IResult<&str, &str> {
 
 /// Parse zero or more lines of documentation comments
 pub fn doc_comment_lines(input: &str) -> IResult<&str, Vec<&str>> {
-    many0(terminated(raw_doc_comment, line_ending))(input)
+    many0(terminated(
+        terminated(raw_doc_comment, line_ending),
+        comment_or_space0,
+    ))(input)
 }
 
 /// Wrap zero or more lines of documentation comments in an AST node.
