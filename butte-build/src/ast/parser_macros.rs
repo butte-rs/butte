@@ -163,83 +163,92 @@ macro_rules! element {
 
 #[macro_export]
 macro_rules! field {
-    ($name:ident, $ty:ident = $default:expr) => {
+    ($name:ident, $ty:ident = $default:expr$(, $doc:literal)?) => {
         $crate::ast::types::Field::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .ty($crate::ast::types::Type::$ty)
+            .doc(vec![$($doc,)?].into())
             .default_value(Some($crate::default_value!($default)))
             .build()
     };
-    ($name:ident, [ $ty:ident ]) => {
+    ($name:ident, [ $ty:ident ]$(, $doc:literal)?) => {
         $crate::ast::types::Field::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .ty($crate::ast::types::Type::Array(Box::new(
                 $crate::ast::types::Type::$ty,
             )))
+            .doc(vec![$($doc,)?].into())
             .build()
     };
-    ($name:ident, $ty:ident) => {
+    ($name:ident, $ty:ident$(, $doc:literal)?) => {
         $crate::ast::types::Field::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .ty($crate::ast::types::Type::$ty)
+            .doc(vec![$($doc,)?].into())
             .build()
     };
-    ($name:ident, [ $ty:path ]) => {
+    ($name:ident, [ $ty:path ]$(, $doc:literal)?) => {
         $crate::ast::types::Field::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .ty($crate::ast::types::Type::Array(Box::new(
                 $crate::ast::types::Type::Ident($crate::qualified_ident_from_path_string!($ty)),
             )))
+            .doc(vec![$($doc,)?].into())
             .build()
     };
-    ($name:ident, $ty:path) => {
+    ($name:ident, $ty:path$(, $doc:literal)?) => {
         $crate::ast::types::Field::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .ty($crate::ast::types::Type::Ident(
                 $crate::qualified_ident_from_path_string!($ty),
             ))
+            .doc(vec![$($doc,)?].into())
             .build()
     };
-    ($name:ident, $ty:ident = $default:expr, [ $($meta:expr),* ]) => {
+    ($name:ident, $ty:ident = $default:expr, [ $($meta:expr),* ]$(, $doc:literal)?) => {
         $crate::ast::types::Field::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .ty($crate::ast::types::Type::$ty)
             .scalar(Some($crate::scalar!($default)))
             .metadata(Some($crate::ast::types::Metadata::from(vec![ $($meta),* ])))
+            .doc(vec![$($doc,)?].into())
             .build()
     };
-    ($name:ident, [ $ty:ident ], [ $($meta:expr),* ]) => {
+    ($name:ident, [ $ty:ident ], [ $($meta:expr),* ]$(, $doc:literal)?) => {
         $crate::ast::types::Field::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .ty($crate::ast::types::Type::Array(Box::new(
                 $crate::ast::types::Type::$ty,
             )))
             .metadata(Some($crate::ast::types::Metadata::from(vec![ $($meta),* ])))
+            .doc(vec![$($doc,)?].into())
             .build()
     };
-    ($name:ident, $ty:ident, [ $($meta:expr),* ]) => {
+    ($name:ident, $ty:ident, [ $($meta:expr),* ]$(, $doc:literal)?) => {
         $crate::ast::types::Field::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .ty($crate::ast::types::Type::$ty)
             .metadata(Some($crate::ast::types::Metadata::from(vec![ $($meta),* ])))
             .build()
     };
-    ($name:ident, [ $ty:path ], [ $($meta:expr),* ]) => {
+    ($name:ident, [ $ty:path ], [ $($meta:expr),* ]$(, $doc:literal)?) => {
         $crate::ast::types::Field::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .ty($crate::ast::types::Type::Array(Box::new(
                 $crate::ast::types::Type::Ident($crate::qualified_ident_from_path_string!($ty)),
             )))
             .metadata(Some($crate::ast::types::Metadata::from(vec![ $($meta),* ])))
+            .doc(vec![$($doc,)?].into())
             .build()
     };
-    ($name:ident, $ty:path, [ $($meta:expr),* ]) => {
+    ($name:ident, $ty:path, [ $($meta:expr),* ]$(, $doc:literal)?) => {
         $crate::ast::types::Field::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .ty($crate::ast::types::Type::Ident(
                 $crate::qualified_ident_from_path_string!($ty),
             ))
             .metadata(Some($crate::ast::types::Metadata::from(vec![ $($meta),* ])))
+            .doc(vec![$($doc,)?].into())
             .build()
     };
 }
@@ -258,14 +267,11 @@ macro_rules! qualified_ident_from_path_string {
 
 #[macro_export]
 macro_rules! table {
-    ($name:ident, $doc:expr, [ $($field:expr),* ]) => {
+    ($name:ident, $($doc:literal,)? [ $($field:expr),* ]) => {
         $crate::ast::types::Table::builder()
-            .doc(($doc).into())
+            .doc(vec![ $($doc,)? ].into())
             .id($crate::ast::types::Ident::from(stringify!($name)))
             .fields(vec![ $($field),* ]).build()
-    };
-    ($name:ident, [ $($field:expr),* ]) => {
-        $crate::table!($name, vec![], [ $($field),* ])
     };
 }
 
@@ -313,17 +319,12 @@ macro_rules! method {
 
 #[macro_export]
 macro_rules! rpc {
-    ($name:ident, $doc:expr, [ $($methods:expr),+ ]) => {
+    ($name:ident, $($doc:literal,)? [ $($methods:expr),+ ]) => {
         $crate::ast::types::Rpc::builder()
             .id($crate::ast::types::Ident::from(stringify!($name)))
-            .doc($doc)
+            .doc(vec![ $($doc,)? ].into())
             .methods(vec![ $($methods),+ ]).build()
     };
-    ($name:ident, [ $($methods:expr),+ ]) => {
-        $crate::ast::types::Rpc::builder()
-            .id($crate::ast::types::Ident::from(stringify!($name)))
-            .methods(vec![ $($methods),+ ]).build()
-    }
 }
 
 #[macro_export]

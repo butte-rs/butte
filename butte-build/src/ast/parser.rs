@@ -6,8 +6,8 @@ use std::convert::TryInto;
 
 #[cfg(test)]
 use crate::{
-    comment as doc, default_value, e_item, element as elem, enum_, field, meta, method, namespace,
-    object as obj, rpc, schema, table, union, value as val,
+    default_value, e_item, element as elem, enum_, field, meta, method, namespace, object as obj,
+    rpc, schema, table, union, value as val,
 };
 
 use hexf_parse::parse_hexf64;
@@ -986,7 +986,7 @@ rpc_service Greeter {
         let result = rpc_decl(input);
         let expected = rpc!(
             Greeter,
-            doc!(" A greeter service!"),
+            " A greeter service!",
             [
                 method!(fn SayHello(HelloRequest) -> HelloReply),
                 method!(fn SayManyHellos(ManyHellosRequest) -> HelloReply, [
@@ -1534,7 +1534,7 @@ table HelloReply {
         let result = table_decl(input);
         let expected = table!(
             HelloReply,
-            doc!(" A response with a required field"),
+            " A response with a required field",
             [field!(message, String, [meta!(required)])]
         );
         assert_successful_parse!(result, expected);
@@ -1559,7 +1559,7 @@ foo :uint=3;//baz
         let result = table_decl(input);
         let expected = table!(
             HelloReply,
-            doc!(" My awesome table!"),
+            " My awesome table!",
             [
                 field!(message, String),
                 field!(foo, UInt = 3),
@@ -1583,7 +1583,7 @@ table HelloReply
         let result = table_decl(input);
         let expected = table!(
             HelloReply,
-            doc!(" My awesome table!"),
+            " My awesome table!",
             [
                 field!(message, String),
                 field!(foo, UInt = 3),
