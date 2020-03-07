@@ -22,7 +22,7 @@ use std::{iter::FromIterator, path::Path, str::FromStr};
 #[cfg(test)]
 macro_rules! assert_failed_parse {
     ($left:expr, $rest:expr, $error_kind:ident) => {
-        assert_eq!(
+        pretty_assertions::assert_eq!(
             $left,
             Err(nom::Err::Error(($rest, nom::error::ErrorKind::$error_kind)))
         )
@@ -39,7 +39,7 @@ macro_rules! assert_successful_parse {
     ($left:expr, $remaining:expr, $right:expr) => {
         // The first element of the tuple in the Result is the remaining input, which should be
         // empty when parsing is successful
-        assert_eq!($left, Ok(($remaining, $right)))
+        pretty_assertions::assert_eq!($left, Ok(($remaining, $right)))
     };
 }
 
