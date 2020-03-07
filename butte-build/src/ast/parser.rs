@@ -525,7 +525,7 @@ pub fn qualified_ident(input: &str) -> IResult<&str, QualifiedIdent> {
 pub fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
     map(
         tuple((
-            doc_comment,
+            terminated(doc_comment, comment_or_space0),
             delimited(
                 tag("namespace"),
                 delimited(comment_or_space1, qualified_ident, comment_or_space0),
@@ -545,6 +545,40 @@ mod namespace_tests {
         let result =
             namespace_decl("namespace // a namespace comment \na// Yet another one\t\n\n\n;");
         let expected = namespace!(a);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_namespace_decl_with_doc_comment() {
+        let input = "\
+/// foo
+namespace foo;";
+        let result = namespace_decl(input);
+        let expected = namespace!(foo, " foo");
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_namespace_decl_with_doc_and_non_doc_comment() {
+        let input = "\
+/// foo
+// Bar
+namespace foo;";
+        let result = namespace_decl(input);
+        let expected = namespace!(foo, " foo");
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_namespace_decl_with_doc_space_and_non_doc_comment() {
+        let input = "\
+/// foo
+//
+// Bar
+
+namespace foo;";
+        let result = namespace_decl(input);
+        let expected = namespace!(foo, " foo");
         assert_successful_parse!(result, expected);
     }
 
