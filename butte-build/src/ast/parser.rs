@@ -1576,6 +1576,23 @@ table HelloReply {
     }
 
     #[test]
+    fn test_table_with_doc_commented_fields() {
+        let input = "\
+/// A response with a required field
+table HelloReply {
+  /// Sweet, sweet message
+  message: string;
+}";
+        let result = table_decl(input);
+        let expected = table!(
+            HelloReply,
+            " A response with a required field",
+            [field!(message, String, " Sweet, sweet message")]
+        );
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
     fn test_table_with_required_field() {
         let input = "\
 /// A response with a required field
