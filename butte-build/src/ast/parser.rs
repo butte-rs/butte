@@ -875,7 +875,7 @@ pub fn field_decl(input: &str) -> IResult<&str, Field> {
     map(
         terminated(
             tuple((
-                doc_comment,
+                terminated(doc_comment, comment_or_space0),
                 terminated(ident, tuple((comment_or_space0, colon, comment_or_space0))),
                 type_,
                 opt(preceded(
@@ -1674,14 +1674,26 @@ table HelloReply {
         let input = "\
 /// A response with a required field
 table HelloReply {
+
   /// Sweet, sweet message
   message: string;
+  // Not a doc comment
+  /// A doc comment
+  foo: [string];
+  // Aha!
+
+  bar: [float64];
+
 }";
         let result = table_decl(input);
         let expected = table!(
             HelloReply,
             " A response with a required field",
-            [field!(message, String, " Sweet, sweet message")]
+            [
+                field!(message, String, " Sweet, sweet message"),
+                field!(foo, [String], " A doc comment"),
+                field!(bar, [Float64])
+            ]
         );
         assert_successful_parse!(result, expected);
     }
