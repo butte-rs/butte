@@ -79,9 +79,10 @@ mod default_value_tests {
 
 #[macro_export]
 macro_rules! namespace {
-    ($path:path) => {
+    ($path:path$(, $doc:literal)?) => {
         $crate::ast::types::Namespace::builder()
             .ident($crate::qualified_ident_from_path_string!($path))
+            .doc(vec![ $($doc,)? ].into())
             .build()
     };
 }
