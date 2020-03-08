@@ -339,7 +339,7 @@ impl<'a> Builder<'a> {
         let base_type = ir::EnumBaseType::UByte;
         let values: Vec<_> = std::iter::once(ir::EnumVal {
             ident: ir::Ident::from("None"),
-            value: Some(0),
+            value: Some(0.into()),
         })
         .chain(u.values.iter().map(|v| ir::EnumVal {
             ident: ir::Ident::from(v.id),
@@ -1138,7 +1138,7 @@ struct Vector3 {
                                 .values(vec![
                                     ir::EnumVal::builder()
                                         .ident(ir::Ident::from("None"))
-                                        .value(Some(0))
+                                        .value(Some(0.into()))
                                         .build(),
                                     ir::EnumVal::builder().ident(ir::Ident::from("A")).build(),
                                     ir::EnumVal::builder().ident(ir::Ident::from("B")).build(),
@@ -1228,7 +1228,7 @@ struct Vector3 {
                                 .values(vec![
                                     ir::EnumVal::builder()
                                         .ident(ir::Ident::from("None"))
-                                        .value(Some(0))
+                                        .value(Some(0.into()))
                                         .build(),
                                     ir::EnumVal::builder().ident(ir::Ident::from("A")).build(),
                                     ir::EnumVal::builder().ident(ir::Ident::from("B")).build(),
@@ -1295,7 +1295,7 @@ struct Vector3 {
                                             values: vec![
                                                 ir::EnumVal::builder()
                                                     .ident(ir::Ident::from("None"))
-                                                    .value(Some(0))
+                                                    .value(Some(0.into()))
                                                     .build(),
                                                 ir::EnumVal::builder()
                                                     .ident(ir::Ident::from("A"))
