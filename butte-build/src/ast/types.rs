@@ -309,6 +309,7 @@ impl IntegerConstant {
     }
 }
 
+/// Convert from Rust's default integer type to Butte's default integer type
 impl From<i32> for IntegerConstant {
     fn from(value: i32) -> Self {
         Self::Signed(value as i64)
@@ -327,6 +328,7 @@ impl std::str::FromStr for IntegerConstant {
     }
 }
 
+/// Convert from usize to Butte's unsigned integer type
 impl TryFrom<usize> for IntegerConstant {
     type Error = std::num::TryFromIntError;
 
