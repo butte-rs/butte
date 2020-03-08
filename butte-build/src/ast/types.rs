@@ -284,34 +284,34 @@ impl<'a> From<[Type<'a>; 1]> for Type<'a> {
 }
 
 /// Integer constant type.
-///
-/// This is `i128` because it needs to be able to contain values of `u64` _and_ `i64` types.
 #[derive(Display, Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, From)]
 pub enum IntegerConstant {
-    I64(i64),
-    U64(u64),
+    Signed(i64),
+    Unsigned(u64),
 }
 
 impl IntegerConstant {
     pub fn from_str_radix(src: &str, radix: u32) -> Result<Self, std::num::ParseIntError> {
-        Ok(if let Ok(i64_value) = i64::from_str_radix(src, radix) {
-            Self::I64(i64_value)
+        // Return an `i64` if a parse succeeds. This makes the default inferred integer type i64.
+        Ok(if let Ok(signed_value) = i64::from_str_radix(src, radix) {
+            Self::Signed(signed_value)
         } else {
-            Self::U64(u64::from_str_radix(src, radix)?)
+            // If a parse doesn't succeed, then try to parse a `u64`.
+            Self::Unsigned(u64::from_str_radix(src, radix)?)
         })
     }
 
     pub fn checked_neg(self) -> Option<Self> {
         match self {
-            Self::I64(i) => i.checked_neg().map(Self::I64),
-            Self::U64(u) => u.try_into().ok().map(|value: i64| Self::I64(-value)),
+            Self::Signed(i) => i.checked_neg().map(Self::Signed),
+            Self::Unsigned(u) => u.try_into().ok().map(|value: i64| Self::Signed(-value)),
         }
     }
 }
 
 impl From<i32> for IntegerConstant {
     fn from(value: i32) -> Self {
-        Self::I64(value as i64)
+        Self::Signed(value as i64)
     }
 }
 
@@ -320,9 +320,9 @@ impl std::str::FromStr for IntegerConstant {
 
     fn from_str(src: &str) -> Result<Self, Self::Err> {
         Ok(if let Ok(i64_value) = i64::from_str(src) {
-            Self::I64(i64_value)
+            Self::Signed(i64_value)
         } else {
-            Self::U64(u64::from_str(src)?)
+            Self::Unsigned(u64::from_str(src)?)
         })
     }
 }
@@ -331,7 +331,7 @@ impl TryFrom<usize> for IntegerConstant {
     type Error = std::num::TryFromIntError;
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
-        value.try_into().map(Self::U64)
+        value.try_into().map(Self::Unsigned)
     }
 }
 
