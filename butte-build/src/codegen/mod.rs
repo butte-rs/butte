@@ -9,6 +9,9 @@ use std::{convert::TryInto, fmt::Display};
 use syn::spanned::Spanned;
 
 #[cfg(test)]
+mod tests;
+
+#[cfg(test)]
 fn to_code(value: impl ToTokens) -> String {
     format!("{}", value.to_token_stream())
 }
