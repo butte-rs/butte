@@ -122,6 +122,7 @@ pub struct Field<'a> {
     pub default_value: Option<ast::DefaultValue<'a>>,
     #[builder(default)]
     pub metadata: FieldMetadata,
+
     #[builder(default)]
     pub doc: ast::Comment<'a>,
 }
@@ -409,6 +410,7 @@ impl Default for RpcStreaming {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RootType<'a> {
     _phantom: &'a (),
+    pub doc: ast::Comment<'a>,
 }
 
 /// Type for `Enum` values.
@@ -420,6 +422,9 @@ pub struct EnumVal<'a> {
     /// An optional enum value.
     #[builder(default)]
     pub value: Option<ast::IntegerConstant>,
+
+    #[builder(default)]
+    pub doc: ast::Comment<'a>,
 }
 
 /// Type for `Union` variants.
@@ -429,6 +434,9 @@ pub struct UnionVariant<'a> {
     pub ty: Type<'a>,
     /// The ident of the variant, matching the companion enum's
     pub ident: Ident<'a>,
+
+    #[builder(default)]
+    pub doc: ast::Comment<'a>,
 }
 
 /// An identifier

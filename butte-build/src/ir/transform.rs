@@ -248,6 +248,7 @@ impl<'a> Builder<'a> {
             .map(|v| ir::EnumVal {
                 ident: ir::Ident::from(v.id),
                 value: v.value,
+                doc: v.doc,
             })
             .collect();
 
@@ -290,6 +291,7 @@ impl<'a> Builder<'a> {
                 variants.push(ir::UnionVariant {
                     ty,
                     ident: ir::Ident::from(id),
+                    doc: id.doc,
                 });
             } else {
                 // not satisfied yet, so we can't build the fields
@@ -340,6 +342,7 @@ impl<'a> Builder<'a> {
         let values: Vec<_> = std::iter::once(ir::EnumVal {
             ident: ir::Ident::from("None"),
             value: Some(0.into()),
+            doc: vec![].into(),
         })
         .chain(u.values.iter().map(|v| ir::EnumVal {
             ident: ir::Ident::from(v.id),
