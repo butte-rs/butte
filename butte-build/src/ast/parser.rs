@@ -2,13 +2,14 @@ use crate::ast::types::*;
 use anyhow::{anyhow, Result};
 
 #[cfg(test)]
-use std::convert::TryInto;
-
-#[cfg(test)]
 use crate::{
     attr, default_value, e_item, element as elem, enum_, field, file_ext, file_id, meta, method,
     namespace, object as obj, root_type, rpc, schema, table, union, value as val,
 };
+#[cfg(test)]
+use pretty_assertions::assert_eq;
+#[cfg(test)]
+use std::convert::TryInto;
 
 use hexf_parse::parse_hexf64;
 
@@ -22,7 +23,7 @@ use std::{iter::FromIterator, path::Path, str::FromStr};
 #[cfg(test)]
 macro_rules! assert_failed_parse {
     ($left:expr, $rest:expr, $error_kind:ident) => {
-        pretty_assertions::assert_eq!(
+        $crate::ast::parser::assert_eq!(
             $left,
             Err(nom::Err::Error(($rest, nom::error::ErrorKind::$error_kind)))
         )
@@ -39,7 +40,7 @@ macro_rules! assert_successful_parse {
     ($left:expr, $remaining:expr, $right:expr) => {
         // The first element of the tuple in the Result is the remaining input, which should be
         // empty when parsing is successful
-        pretty_assertions::assert_eq!($left, Ok(($remaining, $right)))
+        $crate::ast::parser::assert_eq!($left, Ok(($remaining, $right)))
     };
 }
 
@@ -49,7 +50,7 @@ pub fn plus_or_minus(input: &str) -> IResult<&str, char> {
 
 #[cfg(test)]
 mod plus_or_minus_tests {
-    use super::*;
+    use super::plus_or_minus;
 
     #[test]
     fn test_plus_or_minus() {
@@ -131,7 +132,7 @@ pub fn ident(input: &str) -> IResult<&str, Ident> {
 
 #[cfg(test)]
 mod ident_tests {
-    use super::*;
+    use super::{ident, Ident};
 
     #[test]
     fn test_simple_ident() {
@@ -188,7 +189,7 @@ pub fn string_constant(input: &str) -> IResult<&str, &str> {
 
 #[cfg(test)]
 mod string_constant_tests {
-    use super::*;
+    use super::string_constant;
 
     #[test]
     fn test_string_constant() {
@@ -221,7 +222,8 @@ pub fn element(input: &str) -> IResult<&str, Element> {
 
 #[cfg(test)]
 mod element_tests {
-    use super::*;
+    use super::element;
+    use crate::{element as elem, meta, method, rpc};
 
     #[test]
     fn test_element_schema() {
@@ -277,7 +279,8 @@ pub fn schema_decl(input: &str) -> IResult<&str, Schema> {
 
 #[cfg(test)]
 mod schema_tests {
-    use super::*;
+    use super::{comment_or_space0, delimited, include_decl, many0, schema_decl, Include, Path};
+    use crate::{field, meta, method, namespace, rpc, schema, table};
 
     #[test]
     fn test_simple_include_with_comments() {
@@ -460,7 +463,7 @@ pub fn include_decl(input: &str) -> IResult<&str, Include> {
 
 #[cfg(test)]
 mod include_tests {
-    use super::*;
+    use super::{include_decl, Include, Path};
 
     #[test]
     fn test_include_decl_with_comments() {
@@ -538,7 +541,8 @@ pub fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
 
 #[cfg(test)]
 mod namespace_tests {
-    use super::*;
+    use super::namespace_decl;
+    use crate::namespace;
 
     #[test]
     fn test_namespace_decl_with_comments() {
@@ -631,7 +635,8 @@ pub fn attribute_decl(input: &str) -> IResult<&str, Attribute> {
 
 #[cfg(test)]
 mod attribute_tests {
-    use super::*;
+    use super::attribute_decl;
+    use crate::attr;
 
     #[test]
     fn test_simple_attribute_decl_with_comments() {
@@ -639,7 +644,7 @@ mod attribute_tests {
             "attribute// gah, an attr!
             a;",
         );
-        let expected = Attribute::builder().attr("a".into()).build();
+        let expected = attr!(a);
         assert_successful_parse!(result, expected);
     }
 
@@ -659,21 +664,21 @@ attribute a;";
     #[test]
     fn test_simple_attribute_decl() {
         let result = attribute_decl("attribute a;");
-        let expected = Attribute::builder().attr("a".into()).build();
+        let expected = attr!(a);
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_quoted_attribute_decl() {
         let result = attribute_decl("attribute \"a\";");
-        let expected = Attribute::builder().attr("a".into()).build();
+        let expected = attr!(a);
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_attribute_decl_ws() {
         let result = attribute_decl("attribute\t\n\t my_attr\n\n\r\n;");
-        let expected = Attribute::builder().attr("my_attr".into()).build();
+        let expected = attr!(my_attr);
         assert_successful_parse!(result, expected);
     }
 }
@@ -716,7 +721,8 @@ pub fn enum_decl(input: &str) -> IResult<&str, Enum> {
 
 #[cfg(test)]
 mod enum_tests {
-    use super::*;
+    use super::enum_decl;
+    use crate::{e_item, enum_};
 
     #[test]
     fn test_simple_enum_with_comments() {
@@ -801,7 +807,8 @@ pub fn union_decl(input: &str) -> IResult<&str, Union> {
 
 #[cfg(test)]
 mod union_tests {
-    use super::*;
+    use super::union_decl;
+    use crate::{e_item, union};
 
     #[test]
     fn test_simple_union_with_comments() {
@@ -874,7 +881,8 @@ pub fn root_decl(input: &str) -> IResult<&str, Root> {
 
 #[cfg(test)]
 mod root_tests {
-    use super::*;
+    use super::root_decl;
+    use crate::root_type;
 
     #[test]
     fn test_root_decl() {
@@ -925,7 +933,8 @@ pub fn field_decl(input: &str) -> IResult<&str, Field> {
 
 #[cfg(test)]
 mod field_tests {
-    use super::*;
+    use super::{field_decl, Field, Ident, QualifiedIdent, Type};
+    use crate::{default_value, field, meta};
 
     #[test]
     fn test_field_decl_with_metadata() {
@@ -1093,7 +1102,8 @@ pub fn rpc_decl(input: &str) -> IResult<&str, Rpc> {
 
 #[cfg(test)]
 mod rpc_tests {
-    use super::*;
+    use super::rpc_decl;
+    use crate::{meta, method, rpc};
 
     #[test]
     fn test_rpc_decl_single_method_with_comments() {
@@ -1171,7 +1181,7 @@ rpc_service Greeter {
 
 #[cfg(test)]
 mod qualified_ident_tests {
-    use super::*;
+    use super::{qualified_ident, Ident, QualifiedIdent};
 
     #[test]
     fn test_simple_qualified_ident() {
@@ -1213,7 +1223,8 @@ pub fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
 
 #[cfg(test)]
 mod rpc_method_tests {
-    use super::*;
+    use super::rpc_method;
+    use crate::{meta, method};
 
     #[test]
     fn test_rpc_method_with_comments() {
@@ -1341,7 +1352,8 @@ pub fn metadata(input: &str) -> IResult<&str, Option<Metadata>> {
 
 #[cfg(test)]
 mod metadata_tests {
-    use super::*;
+    use super::{metadata, Metadata};
+    use crate::meta;
 
     #[test]
     fn test_simple_metadata_with_comments() {
@@ -1449,7 +1461,8 @@ pub fn object(input: &str) -> IResult<&str, Object> {
 
 #[cfg(test)]
 mod object_tests {
-    use super::*;
+    use super::object;
+    use crate::object as obj;
 
     #[test]
     fn test_object() {
@@ -1529,7 +1542,8 @@ pub fn value_list(input: &str) -> IResult<&str, Vec<Value>> {
 
 #[cfg(test)]
 mod value_list_tests {
-    use super::*;
+    use super::value_list;
+    use crate::value as val;
 
     #[test]
     fn test_value_list() {
@@ -1567,7 +1581,8 @@ pub fn value_(input: &str) -> IResult<&str, Value> {
 
 #[cfg(test)]
 mod value_tests {
-    use super::*;
+    use super::{value_, Scalar, Single, Value};
+    use crate::value as val;
 
     #[test]
     fn test_value_single_value() {
@@ -1635,7 +1650,8 @@ pub fn default_value(input: &str) -> IResult<&str, DefaultValue> {
 
 #[cfg(test)]
 mod default_value_tests {
-    use super::*;
+    use super::default_value;
+    use crate::default_value;
 
     #[test]
     fn test_default_value() {
@@ -1701,7 +1717,8 @@ pub fn table_decl(input: &str) -> IResult<&str, Table> {
 
 #[cfg(test)]
 mod table_tests {
-    use super::*;
+    use super::{table_decl, Field, Ident, QualifiedIdent, Table, Type};
+    use crate::{default_value, field, meta, table};
 
     #[test]
     fn test_empty_table_no_spaces() {
@@ -1862,7 +1879,7 @@ pub fn dec_integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
 
 #[cfg(test)]
 mod dec_integer_constant_tests {
-    use super::*;
+    use super::dec_integer_constant;
 
     #[test]
     fn test_u64() -> Result<()> {
@@ -1925,7 +1942,7 @@ pub fn hex_integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
 
 #[cfg(test)]
 mod hex_integer_constant_tests {
-    use super::*;
+    use super::hex_integer_constant;
 
     #[test]
     fn test_hex_integer_constant() {
@@ -1959,7 +1976,7 @@ pub fn false_(input: &str) -> IResult<&str, BooleanConstant> {
 
 #[cfg(test)]
 mod true_false_tests {
-    use super::*;
+    use super::{false_, true_};
 
     #[test]
     fn test_true() {
@@ -2006,7 +2023,7 @@ pub fn boolean_constant(input: &str) -> IResult<&str, bool> {
 
 #[cfg(test)]
 mod boolean_constant_tests {
-    use super::*;
+    use super::boolean_constant;
 
     #[test]
     fn test_boolean_constant() {
@@ -2048,7 +2065,7 @@ pub fn dec_float_constant(input: &str) -> IResult<&str, FloatingConstant> {
 
 #[cfg(test)]
 mod dec_float_constant_tests {
-    use super::*;
+    use super::dec_float_constant;
 
     #[test]
     fn test_dec_float_constant() {
@@ -2069,7 +2086,7 @@ pub fn float_constant(input: &str) -> IResult<&str, FloatingConstant> {
 
 #[cfg(test)]
 mod float_constant_tests {
-    use super::*;
+    use super::{assert_eq, float_constant};
 
     #[test]
     fn test_float_constant_nan() {
@@ -2174,7 +2191,7 @@ pub fn nan(input: &str) -> IResult<&str, FloatingConstant> {
 
 #[cfg(test)]
 mod nan_tests {
-    use super::*;
+    use super::{assert_eq, nan};
 
     #[test]
     fn test_nan() {
@@ -2222,7 +2239,7 @@ pub fn inf_or_infinity(input: &str) -> IResult<&str, FloatingConstant> {
 
 #[cfg(test)]
 mod inf_or_infinity_tests {
-    use super::*;
+    use super::inf_or_infinity;
 
     #[test]
     fn test_inf_or_infinity_infinity() {
@@ -2253,7 +2270,7 @@ pub fn special_float_constant(input: &str) -> IResult<&str, FloatingConstant> {
 
 #[cfg(test)]
 mod special_float_constant_tests {
-    use super::*;
+    use super::{assert_eq, special_float_constant};
 
     #[test]
     fn test_special_float_constant_nan() {
@@ -2301,7 +2318,7 @@ pub fn integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
 
 #[cfg(test)]
 mod integer_constant_tests {
-    use super::*;
+    use super::integer_constant;
 
     #[test]
     fn test_integer_constant() {
@@ -2335,7 +2352,8 @@ pub fn file_extension_decl(input: &str) -> IResult<&str, FileExtension> {
 
 #[cfg(test)]
 mod file_extension_tests {
-    use super::*;
+    use super::file_extension_decl;
+    use crate::file_ext;
 
     #[test]
     fn test_file_extension_decl_with_comments() {
@@ -2344,7 +2362,7 @@ mod file_extension_tests {
         // foo
             \"foo\"//baz\n\t;",
         );
-        let expected = FileExtension::builder().ext("foo").build();
+        let expected = file_ext!("foo");
         assert_successful_parse!(result, expected);
     }
 
@@ -2432,7 +2450,8 @@ pub fn file_identifier_decl(input: &str) -> IResult<&str, FileIdentifier> {
 
 #[cfg(test)]
 mod file_identifier_tests {
-    use super::*;
+    use super::file_identifier_decl;
+    use crate::file_id;
 
     #[test]
     fn test_file_identifier_decl_with_comments() {
@@ -2512,7 +2531,7 @@ pub fn doc_comment(input: &str) -> IResult<&str, Comment> {
 
 #[cfg(test)]
 mod comment_tests {
-    use super::*;
+    use super::{comment, doc_comment, doc_comment_lines, raw_doc_comment, Comment};
 
     #[test]
     fn test_empty_comment() {
