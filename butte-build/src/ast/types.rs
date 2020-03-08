@@ -320,8 +320,8 @@ impl std::str::FromStr for IntegerConstant {
     type Err = std::num::ParseIntError;
 
     fn from_str(src: &str) -> Result<Self, Self::Err> {
-        Ok(if let Ok(i64_value) = i64::from_str(src) {
-            Self::Signed(i64_value)
+        Ok(if let Ok(signed_value) = i64::from_str(src) {
+            Self::Signed(signed_value)
         } else {
             Self::Unsigned(u64::from_str(src)?)
         })
