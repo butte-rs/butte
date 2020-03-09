@@ -6,7 +6,8 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     convert::TryFrom,
 };
-#[derive(Default)]
+
+#[derive(Default, Clone, Debug)]
 pub struct Builder<'a> {
     current_namespace: Option<ast::Namespace<'a>>,
     types: HashMap<ir::QualifiedIdent<'a>, CustomTypeStatus<'a>>,
@@ -14,6 +15,7 @@ pub struct Builder<'a> {
     root_types: HashSet<ir::QualifiedIdent<'a>>,
 }
 
+#[derive(Debug, Clone)]
 struct ElementInput<'a> {
     el: ast::Element<'a>,
     pos: usize,
@@ -532,12 +534,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn build(schema: ast::Schema<'a>) -> Result<ir::Root<'a>> {
-        let mut context = Builder {
-            current_namespace: None,
-            types: HashMap::new(),
-            nodes: BTreeMap::new(),
-            root_types: HashSet::new(),
-        };
+        let mut context = Builder::default();
 
         // Keep track of the definition order,
         // mostly to build IR deterministically
