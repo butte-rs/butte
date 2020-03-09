@@ -2,14 +2,7 @@ use crate::ast::types::*;
 use anyhow::{anyhow, Result};
 
 #[cfg(test)]
-use crate::{
-    attr, default_value, e_item, element as elem, enum_, field, file_ext, file_id, meta, method,
-    namespace, object as obj, root_type, rpc, schema, table, union, value as val,
-};
-#[cfg(test)]
 use pretty_assertions::assert_eq;
-#[cfg(test)]
-use std::convert::TryInto;
 
 use hexf_parse::parse_hexf64;
 
@@ -1655,21 +1648,21 @@ pub fn default_value(input: &str) -> IResult<&str, DefaultValue> {
 #[cfg(test)]
 mod default_value_tests {
     use super::default_value;
-    use crate::default_value;
+    use crate::default_value as defval;
 
     #[test]
     fn test_default_value() {
         let result = default_value("1");
-        assert_successful_parse!(result, default_value!(1));
+        assert_successful_parse!(result, defval!(1));
 
         let result = default_value("Foo");
-        assert_successful_parse!(result, default_value!("Foo"));
+        assert_successful_parse!(result, defval!("Foo"));
 
         let result = default_value("false");
-        assert_successful_parse!(result, default_value!(false));
+        assert_successful_parse!(result, defval!(false));
 
         let result = default_value("true");
-        assert_successful_parse!(result, default_value!(true));
+        assert_successful_parse!(result, defval!(true));
     }
 }
 
@@ -1883,14 +1876,16 @@ pub fn dec_integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
 
 #[cfg(test)]
 mod dec_integer_constant_tests {
-    use super::dec_integer_constant;
+    use super::{dec_integer_constant, IntegerConstant};
+    use anyhow::Result;
+    use std::convert::TryFrom;
 
     #[test]
     fn test_u64() -> Result<()> {
         let u64_max = std::u64::MAX;
         let u64_max_string = u64_max.to_string();
         let result = dec_integer_constant(&u64_max_string);
-        let expected: IntegerConstant = u64_max.try_into()?;
+        let expected = IntegerConstant::try_from(u64_max)?;
         assert_successful_parse!(result, expected);
         Ok(())
     }
@@ -1900,7 +1895,7 @@ mod dec_integer_constant_tests {
         let i64_max = std::i64::MAX;
         let i64_max_string = i64_max.to_string();
         let result = dec_integer_constant(&i64_max_string);
-        let expected: IntegerConstant = i64_max.try_into()?;
+        let expected = IntegerConstant::try_from(i64_max)?;
         assert_successful_parse!(result, expected);
         Ok(())
     }
@@ -1910,7 +1905,7 @@ mod dec_integer_constant_tests {
         let i64_min = std::i64::MIN;
         let i64_min_string = i64_min.to_string();
         let result = dec_integer_constant(&i64_min_string);
-        let expected: IntegerConstant = i64_min.try_into()?;
+        let expected = IntegerConstant::try_from(i64_min)?;
         assert_successful_parse!(result, expected);
         Ok(())
     }
