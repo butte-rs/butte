@@ -413,12 +413,11 @@ macro_rules! union {
 
 #[macro_export]
 macro_rules! root_type {
-    ($name:ident$(,[ $($doc:literal),+ ])?) => {
+    ($name:ident) => {
         $crate::ast::types::Root::builder()
             .typename($crate::ast::types::Ident::from(stringify!($name)))
-            .doc(vec![ $($($doc,)*)? ].into())
             .build()
-    }
+    };
 }
 
 #[macro_export]
@@ -443,10 +442,9 @@ macro_rules! file_id {
 
 #[macro_export]
 macro_rules! attr {
-    ($attr:ident$(,[ $($doc:literal),+ ])?) => {
+    ($attr:ident) => {
         $crate::ast::types::Attribute::builder()
             .attr(stringify!($attr).into())
-            .doc(vec![$($($doc,)+)?].into())
             .build()
-    }
+    };
 }

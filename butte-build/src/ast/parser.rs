@@ -629,7 +629,7 @@ pub fn attribute_decl(input: &str) -> IResult<&str, Attribute> {
                 semicolon,
             ),
         )),
-        |(comment, attr)| Attribute::builder().doc(comment).attr(attr).build(),
+        |(_, attr)| Attribute::builder().attr(attr).build(),
     )(input)
 }
 
@@ -657,7 +657,9 @@ mod attribute_tests {
 /// Further comments
 attribute a;";
         let result = attribute_decl(input);
-        let expected = attr!(a, [" An", " Attribute", " Further comments"]);
+        // NB: we don't store doc comments on purpose for attribute, as it's not clear where they
+        // would go in the generated code.
+        let expected = attr!(a);
         assert_successful_parse!(result, expected);
     }
 
@@ -875,7 +877,7 @@ pub fn root_decl(input: &str) -> IResult<&str, Root> {
                 semicolon,
             ),
         )),
-        |(comment, typename)| Root::builder().doc(comment).typename(typename).build(),
+        |(_, typename)| Root::builder().typename(typename).build(),
     )(input)
 }
 
@@ -899,7 +901,9 @@ mod root_tests {
 
 root_type Foo;";
         let result = root_decl(input);
-        let expected = root_type!(Foo, [" I am Foo."]);
+        // NB: we don't store doc comments on purpose for root_type, as it's not clear where they
+        // would go in the generated code.
+        let expected = root_type!(Foo);
         assert_successful_parse!(result, expected);
     }
 }

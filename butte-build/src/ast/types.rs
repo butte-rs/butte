@@ -123,9 +123,6 @@ pub struct Namespace<'a> {
 #[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
 pub struct Attribute<'a> {
     pub attr: Ident<'a>,
-
-    #[builder(default)]
-    pub doc: Comment<'a>,
 }
 
 /// Struct type. Structs are product types where fields are always required.
