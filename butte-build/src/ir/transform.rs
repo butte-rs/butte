@@ -16,10 +16,7 @@ pub struct Builder<'a> {
 }
 
 #[derive(Clone, Debug)]
-struct ElementInput<'a> {
-    el: ast::Element<'a>,
-    pos: usize,
-}
+struct IndexedElement<'a>(usize, ast::Element<'a>);
 
 #[derive(Clone, Debug, PartialEq)]
 enum CustomTypeStatus<'a> {
@@ -65,21 +62,23 @@ impl<'a> NamespaceBuf<'a> {
 }
 
 impl<'a> Builder<'a> {
-    fn new_element(&mut self, element: &ElementInput<'a>) -> Result<bool> {
-        let pos = element.pos;
-        Ok(match &element.el {
-            ast::Element::Namespace(n) => self.new_namespace(n)?,
-            ast::Element::Table(t) => self.new_table(t, pos)?,
-            ast::Element::Struct(s) => self.new_struct(s, pos)?,
-            ast::Element::Enum(e) => self.new_enum(e, pos)?,
-            ast::Element::Union(u) => self.new_union(u, pos)?,
-            ast::Element::Rpc(r) => self.new_rpc(r, pos)?,
-            ast::Element::Root(r) => self.new_root(r, pos)?,
+    fn new_element(
+        &mut self,
+        &IndexedElement(pos, ref element): &IndexedElement<'a>,
+    ) -> Result<bool> {
+        match element {
+            ast::Element::Namespace(n) => self.new_namespace(n),
+            ast::Element::Table(t) => self.new_table(t, pos),
+            ast::Element::Struct(s) => self.new_struct(s, pos),
+            ast::Element::Enum(e) => self.new_enum(e, pos),
+            ast::Element::Union(u) => self.new_union(u, pos),
+            ast::Element::Rpc(r) => self.new_rpc(r, pos),
+            ast::Element::Root(r) => self.new_root(r, pos),
             ast::Element::FileExtension(..) => unimplemented!(),
             ast::Element::FileIdentifier(..) => unimplemented!(),
             ast::Element::Attribute(..) => unimplemented!(),
             ast::Element::Object(..) => unimplemented!(),
-        })
+        }
     }
 
     fn new_namespace(&mut self, ns: &ast::Namespace<'a>) -> Result<bool> {
@@ -542,7 +541,7 @@ impl<'a> Builder<'a> {
             .elements
             .into_iter()
             .enumerate()
-            .map(|(i, el)| ElementInput { el, pos: i })
+            .map(|(i, el)| IndexedElement(i, el))
             .collect();
 
         // Loop until all types can be defined
@@ -560,8 +559,10 @@ impl<'a> Builder<'a> {
             } else {
                 // Didn't we progress?
                 if context.nodes.len() == nodes_len {
-                    let unsatisfied_elements: Vec<_> =
-                        unsatisfied.into_iter().map(|u| u.el).collect();
+                    let unsatisfied_elements = unsatisfied
+                        .into_iter()
+                        .map(|IndexedElement(_, element)| element)
+                        .collect::<Vec<_>>();
                     return Err(anyhow!("Unable to type schema: the following definitions referenced items not found: {:?}", unsatisfied_elements));
                     // TODO proper reporting
                 }
