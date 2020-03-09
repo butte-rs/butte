@@ -81,9 +81,6 @@ pub struct Namespace<'a> {
     /// IR namespace nodes
     #[builder(default)]
     pub nodes: Vec<Node<'a>>,
-
-    #[builder(default)]
-    pub doc: ast::Comment<'a>,
 }
 
 impl Namespace<'_> {
