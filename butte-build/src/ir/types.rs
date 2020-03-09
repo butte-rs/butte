@@ -409,7 +409,6 @@ impl Default for RpcStreaming {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RootType<'a> {
     _phantom: &'a (),
-    pub doc: ast::Comment<'a>,
 }
 
 /// Type for `Enum` values.
