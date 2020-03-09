@@ -654,6 +654,7 @@ mod tests {
     #[test]
     fn test_table_simple() {
         let input = "\
+// Not a doc
 table HelloReply {
     message:string;
 }
@@ -679,6 +680,7 @@ table HelloReply {
     fn test_table_root() {
         let input = "\
 table HelloReply {
+    /// Doc
     message:string;
 }
 
@@ -693,6 +695,7 @@ root_type HelloReply;
                     .fields(vec![ir::Field::builder()
                         .ident(ir::Ident::from("message"))
                         .ty(ir::Type::String)
+                        .doc(vec![" Doc"].into())
                         .build()])
                     .root_type(true)
                     .build(),
@@ -705,6 +708,10 @@ root_type HelloReply;
     #[test]
     fn test_table_in_namespace() {
         let input = "\
+/// The foo namespace
+namespace foo;
+
+/// The foo.bar namespace
 namespace foo.bar;
 
 table HelloReply {
@@ -1254,6 +1261,7 @@ struct Vector3 {
                         .fields(vec![ir::Field::builder()
                             .ident(ir::Ident::from("message"))
                             .ty(ir::Type::Array(Box::new(ir::Type::UByte)))
+                            .doc(vec![" A nicer message"].into())
                             .build()])
                         .build(),
                 ),
@@ -1270,6 +1278,7 @@ struct Vector3 {
                                         .ty(ir::CustomType::Table)
                                         .build(),
                                 ))
+                                .doc(vec![" Multiple", " lines", " of comments."].into())
                                 .build(),
                             ir::UnionVariant::builder()
                                 .ident(ir::Ident::from("B"))
@@ -1279,6 +1288,7 @@ struct Vector3 {
                                         .ty(ir::CustomType::Table)
                                         .build(),
                                 ))
+                                .doc(vec![" Comments"].into())
                                 .build(),
                         ])
                         .build(),
@@ -1301,9 +1311,18 @@ struct Vector3 {
                                                     .build(),
                                                 ir::EnumVal::builder()
                                                     .ident(ir::Ident::from("A"))
+                                                    .doc(
+                                                        vec![
+                                                            " Multiple",
+                                                            " lines",
+                                                            " of comments.",
+                                                        ]
+                                                        .into(),
+                                                    )
                                                     .build(),
                                                 ir::EnumVal::builder()
                                                     .ident(ir::Ident::from("B"))
+                                                    .doc(vec![" Comments"].into())
                                                     .build(),
                                             ],
                                             base_type: ir::EnumBaseType::UByte,
@@ -1329,6 +1348,12 @@ struct Vector3 {
                                                             .build(),
                                                     ),
                                                     ident: ir::Ident::from("A"),
+                                                    doc: vec![
+                                                        " Multiple",
+                                                        " lines",
+                                                        " of comments.",
+                                                    ]
+                                                    .into(),
                                                 },
                                                 ir::UnionVariant {
                                                     ty: ir::Type::Custom(
@@ -1338,6 +1363,7 @@ struct Vector3 {
                                                             .build(),
                                                     ),
                                                     ident: ir::Ident::from("B"),
+                                                    doc: vec![" Comments"].into(),
                                                 },
                                             ],
                                         })
