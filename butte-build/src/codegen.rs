@@ -86,15 +86,6 @@ mod ir_ident_tests {
     }
 }
 
-impl ToTokens for ast::IntegerConstant {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        match self {
-            ast::IntegerConstant::Signed(i) => i.to_tokens(tokens),
-            ast::IntegerConstant::Unsigned(u) => u.to_tokens(tokens),
-        }
-    }
-}
-
 impl ToTokens for ast::Scalar {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {

@@ -1,11 +1,6 @@
 //! Types representing the parts of a flatbuffer schema
-use derive_more::{AsRef, Display, From};
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    iter::FromIterator,
-    path::Path,
-};
+use derive_more::{AsRef, From};
+use std::{collections::HashMap, iter::FromIterator, path::Path};
 use typed_builder::TypedBuilder;
 
 /// A Flatbuffer schema.
@@ -283,59 +278,7 @@ impl<'a> From<[Type<'a>; 1]> for Type<'a> {
     }
 }
 
-/// Integer constant type.
-#[derive(Display, Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, From)]
-pub enum IntegerConstant {
-    Signed(i64),
-    Unsigned(u64),
-}
-
-impl IntegerConstant {
-    pub fn from_str_radix(src: &str, radix: u32) -> Result<Self, std::num::ParseIntError> {
-        // Return an `i64` if a parse succeeds. This makes the default inferred integer type i64.
-        Ok(if let Ok(signed_value) = i64::from_str_radix(src, radix) {
-            Self::Signed(signed_value)
-        } else {
-            // If a parse doesn't succeed, then try to parse a `u64`.
-            Self::Unsigned(u64::from_str_radix(src, radix)?)
-        })
-    }
-
-    pub fn checked_neg(self) -> Option<Self> {
-        match self {
-            Self::Signed(i) => i.checked_neg().map(Self::Signed),
-            Self::Unsigned(u) => u.try_into().ok().map(|value: i64| Self::Signed(-value)),
-        }
-    }
-}
-
-/// Convert from Rust's default integer type to Butte's default integer type
-impl From<i32> for IntegerConstant {
-    fn from(value: i32) -> Self {
-        Self::Signed(value as i64)
-    }
-}
-
-impl std::str::FromStr for IntegerConstant {
-    type Err = std::num::ParseIntError;
-
-    fn from_str(src: &str) -> Result<Self, Self::Err> {
-        Ok(if let Ok(signed_value) = i64::from_str(src) {
-            Self::Signed(signed_value)
-        } else {
-            Self::Unsigned(u64::from_str(src)?)
-        })
-    }
-}
-
-/// Convert from usize to Butte's unsigned integer type
-impl TryFrom<usize> for IntegerConstant {
-    type Error = std::num::TryFromIntError;
-
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        value.try_into().map(Self::Unsigned)
-    }
-}
+pub type IntegerConstant = i128;
 
 /// Floating point constant type.
 pub type FloatingConstant = f64;
