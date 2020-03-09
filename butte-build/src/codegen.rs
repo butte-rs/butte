@@ -783,22 +783,27 @@ impl ToTokens for ir::Enum<'_> {
 
         // assign a value to the key if one was given, otherwise give it the
         // enumerated index's value
-        let variants_and_scalars =
-            values
-                .iter()
-                .enumerate()
-                .map(|(i, ir::EnumVal { ident, value, doc })| {
-                    // format the value with the correct type, i.e., base_type
-                    let scalar_value = lit_int(
-                        if let Some(constant) = *value {
-                            constant
-                        } else {
-                            i.try_into().expect("invalid conversion to enum base type")
-                        },
-                        base_type.to_token_stream(),
-                    );
-                    (quote!(#ident), quote!(#scalar_value), doc)
-                });
+        let variants_and_scalars = values.iter().enumerate().map(
+            |(
+                i,
+                ir::EnumVal {
+                    ident: key,
+                    value,
+                    doc,
+                },
+            )| {
+                // format the value with the correct type, i.e., base_type
+                let scalar_value = lit_int(
+                    if let Some(constant) = *value {
+                        constant
+                    } else {
+                        i.try_into().expect("invalid conversion to enum base type")
+                    },
+                    base_type.to_token_stream(),
+                );
+                (quote!(#key), quote!(#scalar_value), doc)
+            },
+        );
 
         let raw_snake_enum_name = enum_id.raw.as_ref().to_snake_case();
         let enum_id_fn_name = format_ident!("enum_name_{}", raw_snake_enum_name);
