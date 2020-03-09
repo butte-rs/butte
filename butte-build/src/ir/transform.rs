@@ -1207,13 +1207,19 @@ struct Vector3 {
     fn test_table_using_union() {
         let input = "\
         table A {
+            /// A nice message
             message: string;
         }
         table B {
+            /// A nicer message
             message: [ubyte];
         }
         union AorB {
+            /// Multiple
+            /// lines
+            /// of comments.
             A,
+            /// Comments
             B
         }
         table Z {
@@ -1236,8 +1242,14 @@ struct Vector3 {
                                         .ident(ir::Ident::from("None"))
                                         .value(Some(0.into()))
                                         .build(),
-                                    ir::EnumVal::builder().ident(ir::Ident::from("A")).build(),
-                                    ir::EnumVal::builder().ident(ir::Ident::from("B")).build(),
+                                    ir::EnumVal::builder()
+                                        .ident(ir::Ident::from("A"))
+                                        .doc(vec![" Multiple", " lines", " of comments."].into())
+                                        .build(),
+                                    ir::EnumVal::builder()
+                                        .ident(ir::Ident::from("B"))
+                                        .doc(vec![" Comments"].into())
+                                        .build(),
                                 ])
                                 .build(),
                         )])
@@ -1249,6 +1261,7 @@ struct Vector3 {
                         .fields(vec![ir::Field::builder()
                             .ident(ir::Ident::from("message"))
                             .ty(ir::Type::String)
+                            .doc(vec![" A nice message"].into())
                             .build()])
                         .build(),
                 ),
