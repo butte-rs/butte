@@ -437,12 +437,30 @@ impl ToTokens for ir::Table<'_> {
         });
 
         let field_accessors = fields.iter().map(|field| {
-            let snake_name = format_ident!("{}", field.ident.as_ref().to_snake_case());
-            let snake_name_str = snake_name.to_string();
+            let ir::Field {
+                ident,
+                ty,
+                metadata,
+                doc,
+                ..
+            } = field;
             let offset_name = offset_id(field);
-            let ty = &field.ty;
-            let ty_ret = to_type_token(table_ns_ref, ty, &quote!('_), &quote!(butte::ForwardsUOffset), false);
-            let ty_wrapped = to_type_token(table_ns_ref, ty, &quote!('_), &quote!(butte::ForwardsUOffset), true);
+            let snake_name = format_ident!("{}", ident.as_ref().to_snake_case());
+            let snake_name_str = snake_name.to_string();
+            let ty_ret = to_type_token(
+                table_ns_ref,
+                ty,
+                &quote!('_),
+                &quote!(butte::ForwardsUOffset),
+                false,
+            );
+            let ty_wrapped = to_type_token(
+                table_ns_ref,
+                ty,
+                &quote!('_),
+                &quote!(butte::ForwardsUOffset),
+                true,
+            );
 
             let allow_type_complexity = if ty.is_complex() {
                 quote!(#[allow(clippy::type_complexity)])
