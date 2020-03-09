@@ -325,12 +325,6 @@ impl From<u64> for Scalar {
     }
 }
 
-impl From<i64> for Scalar {
-    fn from(value: i64) -> Self {
-        Self::from(IntegerConstant::from(value))
-    }
-}
-
 impl From<i32> for Scalar {
     fn from(value: i32) -> Self {
         Self::from(IntegerConstant::from(value))
@@ -367,12 +361,6 @@ impl From<IntegerConstant> for DefaultValue<'_> {
 
 impl From<u64> for DefaultValue<'_> {
     fn from(value: u64) -> Self {
-        Scalar::from(IntegerConstant::from(value)).into()
-    }
-}
-
-impl From<i64> for DefaultValue<'_> {
-    fn from(value: i64) -> Self {
         Scalar::from(IntegerConstant::from(value)).into()
     }
 }
@@ -416,12 +404,6 @@ impl From<IntegerConstant> for Single<'_> {
 
 impl From<u64> for Single<'_> {
     fn from(value: u64) -> Self {
-        Scalar::from(IntegerConstant::from(value)).into()
-    }
-}
-
-impl From<i64> for Single<'_> {
-    fn from(value: i64) -> Self {
         Scalar::from(IntegerConstant::from(value)).into()
     }
 }
