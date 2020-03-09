@@ -82,7 +82,6 @@ impl<'a> Builder<'a> {
 
     fn new_namespace(&mut self, ns: &ast::Namespace<'a>) -> Result<bool> {
         self.current_namespace = Some(ns.clone());
-
         Ok(true)
     }
 
@@ -523,7 +522,6 @@ impl<'a> Builder<'a> {
         fully_qualified_ident: ir::QualifiedIdent<'a>,
     ) -> Option<ir::Type<'a>> {
         let ident = fully_qualified_ident;
-
         let ty = match self.types.get(&ident) {
             Some(CustomTypeStatus::TableDeclared) => ir::CustomType::Table,
             Some(CustomTypeStatus::Defined(ty)) => ty.clone(),
