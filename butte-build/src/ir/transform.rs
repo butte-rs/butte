@@ -15,7 +15,7 @@ pub struct Builder<'a> {
     root_types: HashSet<ir::QualifiedIdent<'a>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 struct ElementInput<'a> {
     el: ast::Element<'a>,
     pos: usize,
