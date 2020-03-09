@@ -1,11 +1,10 @@
-//! IR types
+//! IR types.
 //!
-//! Intermediate representations for `butte-build` where types
-//! are semantically organized (e.g by namespace) and resolved
-//! (so that type dependencies are known)
+//! Intermediate representations for `butte-build` where types are semantically organized (e.g by
+//! namespace) and resolved so that type dependencies are known.
 //!
-//! IR types can also implement `ToTokens` because they contain
-//! all the required information to be transformed into code.
+//! IR types can also implement `ToTokens` because they contain all the required information to be
+//! transformed into code.
 
 use crate::ast::types as ast;
 use derive_more::{AsRef, From};
@@ -65,7 +64,7 @@ impl<'a> Node<'a> {
     }
 }
 
-/// The root of the intermediate representation
+/// The root of the intermediate representation.
 ///
 /// *Not* to be confused with a flatbuffers `root_type`
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
@@ -513,8 +512,8 @@ pub struct QualifiedIdent<'a> {
     pub parts: Vec<Ident<'a>>,
 }
 
-// Clippy wants `is_empty` if there's `len` but it makes no sense here
-// since we never have an empty `QualifiedIdent`
+// Clippy wants `is_empty` if there's `len` but it makes no sense here since we never have an
+// empty `QualifiedIdent`.
 #[allow(clippy::len_without_is_empty)]
 impl<'a> QualifiedIdent<'a> {
     pub fn len(&self) -> usize {
@@ -554,7 +553,7 @@ impl<'a> QualifiedIdent<'a> {
         &self.parts[self.parts.len() - 1]
     }
 
-    // Assumes correctly formed ident
+    // Assumes correctly formed ident.
     // Keywords are allowed
     // Use only for tests
     #[cfg(test)]
