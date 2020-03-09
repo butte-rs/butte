@@ -248,7 +248,7 @@ impl<'a> Builder<'a> {
             .map(|v| ir::EnumVal {
                 ident: ir::Ident::from(v.id),
                 value: v.value,
-                doc: v.doc,
+                doc: v.doc.clone(),
             })
             .collect();
 
@@ -291,7 +291,7 @@ impl<'a> Builder<'a> {
                 variants.push(ir::UnionVariant {
                     ty,
                     ident: ir::Ident::from(id),
-                    doc: id.doc,
+                    doc: f.doc.clone(),
                 });
             } else {
                 // not satisfied yet, so we can't build the fields
@@ -345,8 +345,9 @@ impl<'a> Builder<'a> {
             doc: vec![].into(),
         })
         .chain(u.values.iter().map(|v| ir::EnumVal {
-            ident: ir::Ident::from(v.id),
+            ident: v.id.into(),
             value: None,
+            doc: v.doc.clone(),
         }))
         .collect();
 
