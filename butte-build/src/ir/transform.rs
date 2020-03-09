@@ -705,10 +705,6 @@ root_type HelloReply;
     #[test]
     fn test_table_in_namespace() {
         let input = "\
-/// The foo namespace
-namespace foo;
-
-/// The foo.bar namespace
 namespace foo.bar;
 
 table HelloReply {
