@@ -984,15 +984,14 @@ impl<'a> CodeGenerator<'a> {
         rpc_gen: &mut Option<Box<dyn RpcGenerator>>,
         tokens: &mut TokenStream,
     ) {
-        // the following constructs are (or should be) handled at the file
-        // level:
+        // The following constructs are (or should be) handled at the file level:
         // * Namespaces
         // * Root types
         // * File extensions
         // * File identifiers
         //
-        // Additionally, attributes do not have corresponding concrete code
-        // generated, they are used to *affect* codegen of other items.
+        // Additionally, attributes do not have corresponding concrete code generated, they are
+        // used to *affect* codegen of other items.
         match node {
             ir::Node::Table(t) => t.to_tokens(tokens),
             // ir::Node::Struct(_) => unimplemented!(),
