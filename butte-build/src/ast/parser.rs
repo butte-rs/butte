@@ -2,6 +2,9 @@ use crate::ast::types::*;
 use anyhow::{anyhow, Result};
 
 #[cfg(test)]
+use std::convert::TryInto;
+
+#[cfg(test)]
 use crate::{
     comment as doc, default_value, e_item, element as elem, enum_, field, meta, method, namespace,
     object as obj, rpc, schema, table, union, value as val,
@@ -1372,7 +1375,10 @@ mod value_tests {
     #[test]
     fn test_value_single_value() {
         let result = value_("1");
-        assert_successful_parse!(result, Value::Single(Single::Scalar(Scalar::Integer(1))));
+        assert_successful_parse!(
+            result,
+            Value::Single(Single::Scalar(Scalar::Integer(1.into())))
+        );
 
         let result = value_("2.3");
         assert_successful_parse!(result, val!(2.3));
@@ -1633,34 +1639,59 @@ mod dec_integer_constant_tests {
     use super::*;
 
     #[test]
+    fn test_u64() -> Result<()> {
+        let u64_max = std::u64::MAX;
+        let u64_max_string = u64_max.to_string();
+        let result = dec_integer_constant(&u64_max_string);
+        let expected: IntegerConstant = u64_max.try_into()?;
+        assert_successful_parse!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_i64_max() -> Result<()> {
+        let i64_max = std::i64::MAX;
+        let i64_max_string = i64_max.to_string();
+        let result = dec_integer_constant(&i64_max_string);
+        let expected: IntegerConstant = i64_max.try_into()?;
+        assert_successful_parse!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_i64_min() -> Result<()> {
+        let i64_min = std::i64::MIN;
+        let i64_min_string = i64_min.to_string();
+        let result = dec_integer_constant(&i64_min_string);
+        let expected: IntegerConstant = i64_min.try_into()?;
+        assert_successful_parse!(result, expected);
+        Ok(())
+    }
+
+    #[test]
     fn test_dec_integer_constant() {
         let result = dec_integer_constant("1234");
-        assert_successful_parse!(result, 1234);
+        assert_successful_parse!(result, 1234.into());
 
         let result = dec_integer_constant("-1234");
-        assert_successful_parse!(result, -1234);
+        assert_successful_parse!(result, (-1234).into());
     }
 }
 
 pub fn hex_integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
-    map(
+    map_res(
         tuple((
             opt(plus_or_minus),
-            preceded(
-                zero,
-                preceded(
-                    one_of("xX"),
-                    map_res(hex_digit1, |value| {
-                        IntegerConstant::from_str_radix(value, 16)
-                    }),
-                ),
-            ),
+            preceded(zero, preceded(one_of("xX"), hex_digit1)),
         )),
-        |(sign, value)| {
+        |(sign, value)| -> Result<IntegerConstant> {
+            let int_const = IntegerConstant::from_str_radix(value, 16)?;
             if let Some('-') = sign {
-                -value
+                int_const
+                    .checked_neg()
+                    .ok_or_else(|| anyhow!("invalid value for negation {}", int_const))
             } else {
-                value
+                Ok(int_const)
             }
         },
     )(input)
@@ -1673,10 +1704,10 @@ mod hex_integer_constant_tests {
     #[test]
     fn test_hex_integer_constant() {
         let result = hex_integer_constant("0x1234ABCDEFabcdef");
-        assert_successful_parse!(result, 0x1234_ABCD_EFAB_CDEF);
+        assert_successful_parse!(result, 0x1234_ABCD_EFAB_CDEF_i64.into());
 
         let result = hex_integer_constant("-0x1234ABCDEFabcdef");
-        assert_successful_parse!(result, -0x1234_ABCD_EFAB_CDEF);
+        assert_successful_parse!(result, (-0x1234_ABCD_EFAB_CDEF_i64).into());
     }
 
     #[test]
@@ -2049,16 +2080,16 @@ mod integer_constant_tests {
     #[test]
     fn test_integer_constant() {
         let result = integer_constant("1234");
-        assert_successful_parse!(result, 1234);
+        assert_successful_parse!(result, 1234.into());
 
         let result = integer_constant("-1234");
-        assert_successful_parse!(result, -1234);
+        assert_successful_parse!(result, (-1234).into());
 
         let result = integer_constant("0x1234");
-        assert_successful_parse!(result, 0x1234);
+        assert_successful_parse!(result, 0x1234.into());
 
         let result = integer_constant("-0x1234");
-        assert_successful_parse!(result, -0x1234);
+        assert_successful_parse!(result, (-0x1234).into());
     }
 }
 

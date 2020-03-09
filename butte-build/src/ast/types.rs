@@ -278,8 +278,7 @@ impl<'a> From<[Type<'a>; 1]> for Type<'a> {
     }
 }
 
-/// Integer constant type.
-pub type IntegerConstant = i64;
+pub type IntegerConstant = i128;
 
 /// Floating point constant type.
 pub type FloatingConstant = f64;
@@ -320,6 +319,18 @@ pub enum Scalar {
     Boolean(BooleanConstant),
 }
 
+impl From<u64> for Scalar {
+    fn from(value: u64) -> Self {
+        Self::from(IntegerConstant::from(value))
+    }
+}
+
+impl From<i32> for Scalar {
+    fn from(value: i32) -> Self {
+        Self::from(IntegerConstant::from(value))
+    }
+}
+
 /// JSON-like values.
 #[derive(Debug, Clone, PartialEq, From, TypedBuilder)]
 pub struct Object<'a> {
@@ -345,6 +356,18 @@ pub enum DefaultValue<'a> {
 impl From<IntegerConstant> for DefaultValue<'_> {
     fn from(value: IntegerConstant) -> Self {
         Scalar::from(value).into()
+    }
+}
+
+impl From<u64> for DefaultValue<'_> {
+    fn from(value: u64) -> Self {
+        Scalar::from(IntegerConstant::from(value)).into()
+    }
+}
+
+impl From<i32> for DefaultValue<'_> {
+    fn from(value: i32) -> Self {
+        Scalar::from(IntegerConstant::from(value)).into()
     }
 }
 
@@ -376,6 +399,18 @@ pub enum Single<'a> {
 impl From<IntegerConstant> for Single<'_> {
     fn from(value: IntegerConstant) -> Self {
         Scalar::from(value).into()
+    }
+}
+
+impl From<u64> for Single<'_> {
+    fn from(value: u64) -> Self {
+        Scalar::from(IntegerConstant::from(value)).into()
+    }
+}
+
+impl From<i32> for Single<'_> {
+    fn from(value: i32) -> Self {
+        Scalar::from(IntegerConstant::from(value)).into()
     }
 }
 

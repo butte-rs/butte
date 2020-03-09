@@ -16,10 +16,16 @@ macro_rules! single_value {
 mod single_value_tests {
     #[test]
     fn test_single_value() {
-        use crate::ast::types::*;
+        use crate::ast::types::{Scalar, Single};
 
         let val = single_value!(1);
-        assert_eq!(val, Single::Scalar(Scalar::Integer(1)));
+        assert_eq!(val, Single::Scalar(Scalar::Integer(1i32.into())));
+
+        let val = single_value!(1);
+        assert_eq!(val, Single::Scalar(Scalar::Integer(1i64.into())));
+
+        let val = single_value!(1u64);
+        assert_eq!(val, Single::Scalar(Scalar::Integer(1u64.into())));
 
         let val = single_value!(1.0);
         assert_eq!(val, Single::Scalar(Scalar::Float(1.0)));
@@ -46,10 +52,16 @@ macro_rules! default_value {
 mod default_value_tests {
     #[test]
     fn test_default_value() {
-        use crate::ast::types::*;
+        use crate::ast::types::{DefaultValue, Ident, Scalar};
 
         let val = default_value!(1);
-        assert_eq!(val, DefaultValue::Scalar(Scalar::Integer(1)));
+        assert_eq!(val, DefaultValue::Scalar(Scalar::Integer(1i32.into())));
+
+        let val = default_value!(1);
+        assert_eq!(val, DefaultValue::Scalar(Scalar::Integer(1i64.into())));
+
+        let val = default_value!(1u64);
+        assert_eq!(val, DefaultValue::Scalar(Scalar::Integer(1u64.into())));
 
         let val = default_value!(1.0);
         assert_eq!(val, DefaultValue::Scalar(Scalar::Float(1.0)));
@@ -102,20 +114,20 @@ macro_rules! value {
 mod value_macro_tests {
     #[test]
     fn test_value_macro_simple() {
-        use crate::ast::types::*;
+        use crate::ast::types::{Scalar, Single, Value};
 
         let result = value!("a");
         let expected = Value::Single(Single::String("a"));
         assert_eq!(result, expected);
 
         let result = value!(1);
-        let expected = Value::Single(Single::Scalar(Scalar::Integer(1)));
+        let expected = Value::Single(Single::Scalar(Scalar::Integer(1.into())));
         assert_eq!(result, expected);
     }
 
     #[test]
     fn test_value_macro_list() {
-        use crate::ast::types::*;
+        use crate::ast::types::{Scalar, Single, Value};
 
         let result = value!(["a", "b", 1]);
         let expected = Value::List(vec![
@@ -128,13 +140,13 @@ mod value_macro_tests {
 
     #[test]
     fn test_value_macro_obj() {
-        use crate::ast::types::*;
+        use crate::ast::types::{Ident, Scalar, Single, Value};
 
         let result = value!({ a => 1, b => "c" });
         let expected = Value::from(vec![
             (
                 Ident::from("a"),
-                Value::Single(Single::Scalar(Scalar::Integer(1))),
+                Value::Single(Single::Scalar(Scalar::Integer(1.into()))),
             ),
             (Ident::from("b"), Value::Single(Single::String("c"))),
         ]);
@@ -367,7 +379,7 @@ macro_rules! e_item {
     ($key:ident = $value:expr) => {
         $crate::ast::types::EnumVal::builder()
             .id($crate::ast::types::Ident::from(stringify!($key)))
-            .value(Some($value))
+            .value(Some(($value).into()))
             .build()
     };
     ($key:ident) => {
