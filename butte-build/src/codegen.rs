@@ -575,13 +575,16 @@ impl ToTokens for ir::Table<'_> {
 
         let struct_offset_enum_name = format_ident!("{}Offset", raw_struct_name);
 
-        let required_fields = fields.iter().map(|field| {
-            let snake_name = field.ident.as_ref().to_snake_case();
-            let offset_name = offset_id(field);
-            quote! {
-                self.fbb.required(o, #struct_id::#offset_name, #snake_name);
-            }
-        });
+        let required_fields = fields
+            .iter()
+            .filter(|field| field.metadata.required)
+            .map(|field| {
+                let snake_name = field.ident.as_ref().to_snake_case();
+                let offset_name = offset_id(field);
+                quote! {
+                    self.fbb.required(o, #struct_id::#offset_name, #snake_name);
+                }
+            });
 
         (quote! {
             pub enum #struct_offset_enum_name {}
