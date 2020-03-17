@@ -6,7 +6,8 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     convert::TryFrom,
 };
-#[derive(Default)]
+
+#[derive(Default, Clone, Debug)]
 pub struct Builder<'a> {
     current_namespace: Option<ast::Namespace<'a>>,
     types: HashMap<ir::QualifiedIdent<'a>, CustomTypeStatus<'a>>,
@@ -14,10 +15,8 @@ pub struct Builder<'a> {
     root_types: HashSet<ir::QualifiedIdent<'a>>,
 }
 
-struct ElementInput<'a> {
-    el: ast::Element<'a>,
-    pos: usize,
-}
+#[derive(Clone, Debug)]
+struct IndexedElement<'a>(usize, ast::Element<'a>);
 
 #[derive(Clone, Debug, PartialEq)]
 enum CustomTypeStatus<'a> {
@@ -63,26 +62,27 @@ impl<'a> NamespaceBuf<'a> {
 }
 
 impl<'a> Builder<'a> {
-    fn new_element(&mut self, element: &ElementInput<'a>) -> Result<bool> {
-        let pos = element.pos;
-        Ok(match &element.el {
-            ast::Element::Namespace(n) => self.new_namespace(n)?,
-            ast::Element::Table(t) => self.new_table(t, pos)?,
-            ast::Element::Struct(s) => self.new_struct(s, pos)?,
-            ast::Element::Enum(e) => self.new_enum(e, pos)?,
-            ast::Element::Union(u) => self.new_union(u, pos)?,
-            ast::Element::Rpc(r) => self.new_rpc(r, pos)?,
-            ast::Element::Root(r) => self.new_root(r, pos)?,
+    fn new_element(
+        &mut self,
+        &IndexedElement(pos, ref element): &IndexedElement<'a>,
+    ) -> Result<bool> {
+        match element {
+            ast::Element::Namespace(n) => self.new_namespace(n),
+            ast::Element::Table(t) => self.new_table(t, pos),
+            ast::Element::Struct(s) => self.new_struct(s, pos),
+            ast::Element::Enum(e) => self.new_enum(e, pos),
+            ast::Element::Union(u) => self.new_union(u, pos),
+            ast::Element::Rpc(r) => self.new_rpc(r, pos),
+            ast::Element::Root(r) => self.new_root(r, pos),
             ast::Element::FileExtension(..) => unimplemented!(),
             ast::Element::FileIdentifier(..) => unimplemented!(),
             ast::Element::Attribute(..) => unimplemented!(),
             ast::Element::Object(..) => unimplemented!(),
-        })
+        }
     }
 
     fn new_namespace(&mut self, ns: &ast::Namespace<'a>) -> Result<bool> {
         self.current_namespace = Some(ns.clone());
-
         Ok(true)
     }
 
@@ -248,6 +248,7 @@ impl<'a> Builder<'a> {
             .map(|v| ir::EnumVal {
                 ident: ir::Ident::from(v.id),
                 value: v.value,
+                doc: v.doc.clone(),
             })
             .collect();
 
@@ -290,6 +291,7 @@ impl<'a> Builder<'a> {
                 variants.push(ir::UnionVariant {
                     ty,
                     ident: ir::Ident::from(id),
+                    doc: f.doc.clone(),
                 });
             } else {
                 // not satisfied yet, so we can't build the fields
@@ -340,10 +342,12 @@ impl<'a> Builder<'a> {
         let values: Vec<_> = std::iter::once(ir::EnumVal {
             ident: ir::Ident::from("None"),
             value: Some(0.into()),
+            doc: vec![].into(),
         })
         .chain(u.values.iter().map(|v| ir::EnumVal {
-            ident: ir::Ident::from(v.id),
+            ident: v.id.into(),
             value: None,
+            doc: v.doc.clone(),
         }))
         .collect();
 
@@ -519,7 +523,6 @@ impl<'a> Builder<'a> {
         fully_qualified_ident: ir::QualifiedIdent<'a>,
     ) -> Option<ir::Type<'a>> {
         let ident = fully_qualified_ident;
-
         let ty = match self.types.get(&ident) {
             Some(CustomTypeStatus::TableDeclared) => ir::CustomType::Table,
             Some(CustomTypeStatus::Defined(ty)) => ty.clone(),
@@ -530,12 +533,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn build(schema: ast::Schema<'a>) -> Result<ir::Root<'a>> {
-        let mut context = Builder {
-            current_namespace: None,
-            types: HashMap::new(),
-            nodes: BTreeMap::new(),
-            root_types: HashSet::new(),
-        };
+        let mut context = Builder::default();
 
         // Keep track of the definition order,
         // mostly to build IR deterministically
@@ -543,7 +541,7 @@ impl<'a> Builder<'a> {
             .elements
             .into_iter()
             .enumerate()
-            .map(|(i, el)| ElementInput { el, pos: i })
+            .map(|(i, el)| IndexedElement(i, el))
             .collect();
 
         // Loop until all types can be defined
@@ -561,8 +559,10 @@ impl<'a> Builder<'a> {
             } else {
                 // Didn't we progress?
                 if context.nodes.len() == nodes_len {
-                    let unsatisfied_elements: Vec<_> =
-                        unsatisfied.into_iter().map(|u| u.el).collect();
+                    let unsatisfied_elements = unsatisfied
+                        .into_iter()
+                        .map(|IndexedElement(_, element)| element)
+                        .collect::<Vec<_>>();
                     return Err(anyhow!("Unable to type schema: the following definitions referenced items not found: {:?}", unsatisfied_elements));
                     // TODO proper reporting
                 }
@@ -652,6 +652,7 @@ mod tests {
     #[test]
     fn test_table_simple() {
         let input = "\
+// Not a doc
 table HelloReply {
     message:string;
 }
@@ -677,6 +678,7 @@ table HelloReply {
     fn test_table_root() {
         let input = "\
 table HelloReply {
+    /// Doc
     message:string;
 }
 
@@ -691,6 +693,7 @@ root_type HelloReply;
                     .fields(vec![ir::Field::builder()
                         .ident(ir::Ident::from("message"))
                         .ty(ir::Type::String)
+                        .doc(vec![" Doc"].into())
                         .build()])
                     .root_type(true)
                     .build(),
@@ -1201,13 +1204,19 @@ struct Vector3 {
     fn test_table_using_union() {
         let input = "\
         table A {
+            /// A nice message
             message: string;
         }
         table B {
+            /// A nicer message
             message: [ubyte];
         }
         union AorB {
+            /// Multiple
+            /// lines
+            /// of comments.
             A,
+            /// Comments
             B
         }
         table Z {
@@ -1230,8 +1239,14 @@ struct Vector3 {
                                         .ident(ir::Ident::from("None"))
                                         .value(Some(0.into()))
                                         .build(),
-                                    ir::EnumVal::builder().ident(ir::Ident::from("A")).build(),
-                                    ir::EnumVal::builder().ident(ir::Ident::from("B")).build(),
+                                    ir::EnumVal::builder()
+                                        .ident(ir::Ident::from("A"))
+                                        .doc(vec![" Multiple", " lines", " of comments."].into())
+                                        .build(),
+                                    ir::EnumVal::builder()
+                                        .ident(ir::Ident::from("B"))
+                                        .doc(vec![" Comments"].into())
+                                        .build(),
                                 ])
                                 .build(),
                         )])
@@ -1243,6 +1258,7 @@ struct Vector3 {
                         .fields(vec![ir::Field::builder()
                             .ident(ir::Ident::from("message"))
                             .ty(ir::Type::String)
+                            .doc(vec![" A nice message"].into())
                             .build()])
                         .build(),
                 ),
@@ -1252,6 +1268,7 @@ struct Vector3 {
                         .fields(vec![ir::Field::builder()
                             .ident(ir::Ident::from("message"))
                             .ty(ir::Type::Array(Box::new(ir::Type::UByte)))
+                            .doc(vec![" A nicer message"].into())
                             .build()])
                         .build(),
                 ),
@@ -1268,6 +1285,7 @@ struct Vector3 {
                                         .ty(ir::CustomType::Table)
                                         .build(),
                                 ))
+                                .doc(vec![" Multiple", " lines", " of comments."].into())
                                 .build(),
                             ir::UnionVariant::builder()
                                 .ident(ir::Ident::from("B"))
@@ -1277,6 +1295,7 @@ struct Vector3 {
                                         .ty(ir::CustomType::Table)
                                         .build(),
                                 ))
+                                .doc(vec![" Comments"].into())
                                 .build(),
                         ])
                         .build(),
@@ -1299,9 +1318,18 @@ struct Vector3 {
                                                     .build(),
                                                 ir::EnumVal::builder()
                                                     .ident(ir::Ident::from("A"))
+                                                    .doc(
+                                                        vec![
+                                                            " Multiple",
+                                                            " lines",
+                                                            " of comments.",
+                                                        ]
+                                                        .into(),
+                                                    )
                                                     .build(),
                                                 ir::EnumVal::builder()
                                                     .ident(ir::Ident::from("B"))
+                                                    .doc(vec![" Comments"].into())
                                                     .build(),
                                             ],
                                             base_type: ir::EnumBaseType::UByte,
@@ -1327,6 +1355,12 @@ struct Vector3 {
                                                             .build(),
                                                     ),
                                                     ident: ir::Ident::from("A"),
+                                                    doc: vec![
+                                                        " Multiple",
+                                                        " lines",
+                                                        " of comments.",
+                                                    ]
+                                                    .into(),
                                                 },
                                                 ir::UnionVariant {
                                                     ty: ir::Type::Custom(
@@ -1336,6 +1370,7 @@ struct Vector3 {
                                                             .build(),
                                                     ),
                                                     ident: ir::Ident::from("B"),
+                                                    doc: vec![" Comments"].into(),
                                                 },
                                             ],
                                         })

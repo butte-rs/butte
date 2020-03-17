@@ -3,7 +3,9 @@
 namespace foo.bar;
 
 
+/// Hello there!
 table HelloRequest {
+  /// What's your name?
   name: string (required);
 }
 
@@ -13,6 +15,7 @@ table HelloReply {
 
 table ManyHellosRequest {
   name: string (required);
+  /// Number of "hellos"
   num_greetings: int;
 }
 
@@ -22,19 +25,26 @@ union EitherHello {
 
 table EitherHelloRequest {
   something_required: EitherHello (required);
+  /// A comment
   something: EitherHello;
 }
 
 
 table HelloRequestArray {
+  /// Field comment
   requests: [HelloRequest];
 }
 
 namespace baz.buzz;
 
+/// Doc
 enum Foo : int32 {
   A,
+  /// Foo
   B,
+  /// Bar
+  //
+  /// Baz
   C
 }
 
@@ -44,10 +54,11 @@ table FooBar {
 }
 
 
-
 /// A greeter service!
 /// ... with a multiline doc comment?!
 rpc_service Greeter {
+  /// More info
   SayHello(foo.bar.HelloRequest) : foo.bar.HelloReply;
+  /// Even more info
   SayManyHellos(foo.bar.ManyHellosRequest) : foo.bar.HelloReply (streaming: "server");
 }

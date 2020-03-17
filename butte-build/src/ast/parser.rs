@@ -2,13 +2,7 @@ use crate::ast::types::*;
 use anyhow::{anyhow, Result};
 
 #[cfg(test)]
-use std::convert::TryInto;
-
-#[cfg(test)]
-use crate::{
-    comment as doc, default_value, e_item, element as elem, enum_, field, meta, method, namespace,
-    object as obj, rpc, schema, table, union, value as val,
-};
+use pretty_assertions::assert_eq;
 
 use hexf_parse::parse_hexf64;
 
@@ -17,12 +11,12 @@ use nom::{
     sequence::*, IResult,
 };
 
-use std::{path::Path, str::FromStr};
+use std::{iter::FromIterator, path::Path, str::FromStr};
 
 #[cfg(test)]
 macro_rules! assert_failed_parse {
     ($left:expr, $rest:expr, $error_kind:ident) => {
-        assert_eq!(
+        $crate::ast::parser::assert_eq!(
             $left,
             Err(nom::Err::Error(($rest, nom::error::ErrorKind::$error_kind)))
         )
@@ -39,7 +33,7 @@ macro_rules! assert_successful_parse {
     ($left:expr, $remaining:expr, $right:expr) => {
         // The first element of the tuple in the Result is the remaining input, which should be
         // empty when parsing is successful
-        assert_eq!($left, Ok(($remaining, $right)))
+        $crate::ast::parser::assert_eq!($left, Ok(($remaining, $right)))
     };
 }
 
@@ -49,7 +43,7 @@ pub fn plus_or_minus(input: &str) -> IResult<&str, char> {
 
 #[cfg(test)]
 mod plus_or_minus_tests {
-    use super::*;
+    use super::plus_or_minus;
 
     #[test]
     fn test_plus_or_minus() {
@@ -131,7 +125,7 @@ pub fn ident(input: &str) -> IResult<&str, Ident> {
 
 #[cfg(test)]
 mod ident_tests {
-    use super::*;
+    use super::{ident, Ident};
 
     #[test]
     fn test_simple_ident() {
@@ -188,7 +182,7 @@ pub fn string_constant(input: &str) -> IResult<&str, &str> {
 
 #[cfg(test)]
 mod string_constant_tests {
-    use super::*;
+    use super::string_constant;
 
     #[test]
     fn test_string_constant() {
@@ -221,7 +215,8 @@ pub fn element(input: &str) -> IResult<&str, Element> {
 
 #[cfg(test)]
 mod element_tests {
-    use super::*;
+    use super::element;
+    use crate::{element as elem, meta, method, rpc};
 
     #[test]
     fn test_element_schema() {
@@ -277,7 +272,8 @@ pub fn schema_decl(input: &str) -> IResult<&str, Schema> {
 
 #[cfg(test)]
 mod schema_tests {
-    use super::*;
+    use super::{comment_or_space0, delimited, include_decl, many0, schema_decl, Include, Path};
+    use crate::{field, meta, method, namespace, rpc, schema, table};
 
     #[test]
     fn test_simple_include_with_comments() {
@@ -460,7 +456,7 @@ pub fn include_decl(input: &str) -> IResult<&str, Include> {
 
 #[cfg(test)]
 mod include_tests {
-    use super::*;
+    use super::{include_decl, Include, Path};
 
     #[test]
     fn test_include_decl_with_comments() {
@@ -538,13 +534,48 @@ pub fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
 
 #[cfg(test)]
 mod namespace_tests {
-    use super::*;
+    use super::namespace_decl;
+    use crate::namespace;
 
     #[test]
     fn test_namespace_decl_with_comments() {
         let result =
             namespace_decl("namespace // a namespace comment \na// Yet another one\t\n\n\n;");
         let expected = namespace!(a);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_namespace_decl_with_doc_comment() {
+        let input = "\
+/// foo
+namespace foo;";
+        let result = namespace_decl(input);
+        let expected = namespace!(foo, [" foo"]);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_namespace_decl_with_doc_and_non_doc_comment() {
+        let input = "\
+/// foo
+// Bar
+namespace foo;";
+        let result = namespace_decl(input);
+        let expected = namespace!(foo, [" foo"]);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_namespace_decl_with_doc_space_and_non_doc_comment() {
+        let input = "\
+/// foo
+//
+// Bar
+
+namespace foo;";
+        let result = namespace_decl(input);
+        let expected = namespace!(foo, [" foo"]);
         assert_successful_parse!(result, expected);
     }
 
@@ -591,13 +622,14 @@ pub fn attribute_decl(input: &str) -> IResult<&str, Attribute> {
                 semicolon,
             ),
         )),
-        |(comment, attr)| Attribute::builder().doc(comment).attr(attr).build(),
+        |(_, attr)| Attribute::builder().attr(attr).build(),
     )(input)
 }
 
 #[cfg(test)]
 mod attribute_tests {
-    use super::*;
+    use super::attribute_decl;
+    use crate::attr;
 
     #[test]
     fn test_simple_attribute_decl_with_comments() {
@@ -605,28 +637,43 @@ mod attribute_tests {
             "attribute// gah, an attr!
             a;",
         );
-        let expected = Attribute::builder().attr("a".into()).build();
+        let expected = attr!(a);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_attribute_decl_with_doc_comments() {
+        let input = "\
+/// An
+/// Attribute
+// implementation notes
+/// Further comments
+attribute a;";
+        let result = attribute_decl(input);
+        // NB: we don't store doc comments on purpose for attribute, as it's not clear where they
+        // would go in the generated code.
+        let expected = attr!(a);
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_simple_attribute_decl() {
         let result = attribute_decl("attribute a;");
-        let expected = Attribute::builder().attr("a".into()).build();
+        let expected = attr!(a);
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_quoted_attribute_decl() {
         let result = attribute_decl("attribute \"a\";");
-        let expected = Attribute::builder().attr("a".into()).build();
+        let expected = attr!(a);
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_attribute_decl_ws() {
         let result = attribute_decl("attribute\t\n\t my_attr\n\n\r\n;");
-        let expected = Attribute::builder().attr("my_attr".into()).build();
+        let expected = attr!(my_attr);
         assert_successful_parse!(result, expected);
     }
 }
@@ -669,7 +716,8 @@ pub fn enum_decl(input: &str) -> IResult<&str, Enum> {
 
 #[cfg(test)]
 mod enum_tests {
-    use super::*;
+    use super::enum_decl;
+    use crate::{e_item, enum_};
 
     #[test]
     fn test_simple_enum_with_comments() {
@@ -682,6 +730,35 @@ mod enum_tests {
         }";
         let result = enum_decl(input);
         let expected = enum_!(MyEnum, Int32, [e_item!(foo = 1), e_item!(bar)]);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_enum_with_doc_comments() {
+        let input = "\
+/// The enum!
+enum MyEnum : int32 {
+    // Not a doc commment
+    /// Maybe it's a foo
+    foo = 1,
+    // Hm,
+    /// Could be a bar though
+    bar,
+
+    // Nope, it's a baz
+    baz = 9,
+}";
+        let result = enum_decl(input);
+        let expected = enum_!(
+            MyEnum,
+            Int32,
+            [
+                e_item!(foo = 1, [" Maybe it's a foo"]),
+                e_item!(bar, [" Could be a bar though"]),
+                e_item!(baz = 9)
+            ],
+            [" The enum!"]
+        );
         assert_successful_parse!(result, expected);
     }
 
@@ -725,7 +802,8 @@ pub fn union_decl(input: &str) -> IResult<&str, Union> {
 
 #[cfg(test)]
 mod union_tests {
-    use super::*;
+    use super::union_decl;
+    use crate::{e_item, union};
 
     #[test]
     fn test_simple_union_with_comments() {
@@ -738,6 +816,34 @@ mod union_tests {
         let expected = union!(
             MyUnion,
             [e_item!(foo = 1), e_item!(bar), e_item!(Baz = 234)]
+        );
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_union_with_doc_comments() {
+        let input = "\
+/// Unionize!
+union MyUnion {
+    // Not a doc commment
+    /// Maybe it's a foo
+    foo = 1,
+    // Hm,
+    /// Could be a bar though
+    bar,
+
+    // Nope, it's a baz
+    baz = 9,
+}";
+        let result = union_decl(input);
+        let expected = union!(
+            MyUnion,
+            [
+                e_item!(foo = 1, [" Maybe it's a foo"]),
+                e_item!(bar, [" Could be a bar though"]),
+                e_item!(baz = 9)
+            ],
+            [" Unionize!"]
         );
         assert_successful_parse!(result, expected);
     }
@@ -764,18 +870,33 @@ pub fn root_decl(input: &str) -> IResult<&str, Root> {
                 semicolon,
             ),
         )),
-        |(comment, typename)| Root::builder().doc(comment).typename(typename).build(),
+        |(_, typename)| Root::builder().typename(typename).build(),
     )(input)
 }
 
 #[cfg(test)]
 mod root_tests {
-    use super::*;
+    use super::root_decl;
+    use crate::root_type;
 
     #[test]
     fn test_root_decl() {
         let result = root_decl("root_type Foo;");
-        let expected = Root::builder().typename("Foo".into()).build();
+        let expected = root_type!(Foo);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_root_decl_with_doc_comments() {
+        let input = "\
+/// I am Foo.
+// Not a doc
+
+root_type Foo;";
+        let result = root_decl(input);
+        // NB: we don't store doc comments on purpose for root_type, as it's not clear where they
+        // would go in the generated code.
+        let expected = root_type!(Foo);
         assert_successful_parse!(result, expected);
     }
 }
@@ -809,7 +930,8 @@ pub fn field_decl(input: &str) -> IResult<&str, Field> {
 
 #[cfg(test)]
 mod field_tests {
-    use super::*;
+    use super::{field_decl, Field, Ident, QualifiedIdent, Type};
+    use crate::{default_value, field, meta};
 
     #[test]
     fn test_field_decl_with_metadata() {
@@ -834,6 +956,57 @@ foo // bar
 ;";
         let result = field_decl(input);
         let expected = field!(foo, Float64 = 2.0);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_field_decl_with_doc_comment() {
+        let input = "\
+/// A really great field
+great: int64;";
+
+        let expected = field!(great, Int64, [" A really great field"]);
+        let result = field_decl(input);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_field_decl_with_doc_and_non_doc_comment() {
+        let input = "\
+/// A really great field
+// Not part of the doc
+
+great: int64;";
+
+        let expected = field!(great, Int64, [" A really great field"]);
+        let result = field_decl(input);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_field_decl_with_spaced_doc_comment() {
+        let input = "\
+/// A really great field
+
+great: int64;";
+
+        let expected = field!(great, Int64, [" A really great field"]);
+        let result = field_decl(input);
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_field_decl_with_space_doc_and_non_doc_comment() {
+        let input = "\
+/// A really great field
+// comment
+
+
+// Thing!
+great: int64;";
+
+        let expected = field!(great, Int64, [" A really great field"]);
+        let result = field_decl(input);
         assert_successful_parse!(result, expected);
     }
 
@@ -926,7 +1099,8 @@ pub fn rpc_decl(input: &str) -> IResult<&str, Rpc> {
 
 #[cfg(test)]
 mod rpc_tests {
-    use super::*;
+    use super::rpc_decl;
+    use crate::{meta, method, rpc};
 
     #[test]
     fn test_rpc_decl_single_method_with_comments() {
@@ -978,21 +1152,25 @@ rpc_service Greeter {
     fn test_rpc_decl_doc_comment() {
         let input = "\
 /// A greeter service!
+// impl
+/// User facing
 rpc_service Greeter {
+  /// Hi there!
   SayHello   (HelloRequest ):HelloReply;
+  /// Multiple hi theres!
   SayManyHellos(ManyHellosRequest):HelloReply  (streaming: \"server\"  ) ;
 
 }";
         let result = rpc_decl(input);
         let expected = rpc!(
             Greeter,
-            doc!(" A greeter service!"),
             [
-                method!(fn SayHello(HelloRequest) -> HelloReply),
+                method!(fn SayHello(HelloRequest) -> HelloReply, None, [ " Hi there!" ]),
                 method!(fn SayManyHellos(ManyHellosRequest) -> HelloReply, [
                     meta!(streaming, "server")
-                ])
-            ]
+                ], [ " Multiple hi theres!" ])
+            ],
+            [" A greeter service!", " User facing"]
         );
         assert_successful_parse!(result, expected);
     }
@@ -1000,7 +1178,7 @@ rpc_service Greeter {
 
 #[cfg(test)]
 mod qualified_ident_tests {
-    use super::*;
+    use super::{qualified_ident, Ident, QualifiedIdent};
 
     #[test]
     fn test_simple_qualified_ident() {
@@ -1013,6 +1191,7 @@ mod qualified_ident_tests {
 pub fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
     map(
         tuple((
+            doc_comment,
             terminated(ident, comment_or_space0),
             delimited(
                 left_paren,
@@ -1027,12 +1206,13 @@ pub fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
                 ),
             ),
         )),
-        |(name, request_type, (response_type, metadata))| {
+        |(comment, name, request_type, (response_type, metadata))| {
             RpcMethod::builder()
                 .id(name)
                 .request_type(request_type)
                 .response_type(response_type)
                 .metadata(metadata)
+                .doc(comment)
                 .build()
         },
     )(input)
@@ -1040,7 +1220,8 @@ pub fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
 
 #[cfg(test)]
 mod rpc_method_tests {
-    use super::*;
+    use super::rpc_method;
+    use crate::{meta, method};
 
     #[test]
     fn test_rpc_method_with_comments() {
@@ -1128,13 +1309,16 @@ pub fn type_(input: &str) -> IResult<&str, Type> {
 /// Parse the individual items of an enum or union.
 pub fn enumval_decl(input: &str) -> IResult<&str, EnumVal> {
     let parser = tuple((
+        doc_comment,
         ident,
         opt(preceded(
             comment_or_space0,
             preceded(equals, preceded(comment_or_space0, integer_constant)),
         )),
     ));
-    map(parser, EnumVal::from)(input)
+    map(parser, |(comment, id, value)| {
+        EnumVal::builder().id(id).value(value).doc(comment).build()
+    })(input)
 }
 
 /// Parse key-value metadata pairs.
@@ -1165,7 +1349,8 @@ pub fn metadata(input: &str) -> IResult<&str, Option<Metadata>> {
 
 #[cfg(test)]
 mod metadata_tests {
-    use super::*;
+    use super::{metadata, Metadata};
+    use crate::meta;
 
     #[test]
     fn test_simple_metadata_with_comments() {
@@ -1247,25 +1432,34 @@ pub fn scalar(input: &str) -> IResult<&str, Scalar> {
 /// Parse JSON object-like data.
 pub fn object(input: &str) -> IResult<&str, Object> {
     map(
-        delimited(
-            terminated(left_brace, comment_or_space0),
-            separated_list(
-                delimited(comment_or_space0, comma, comment_or_space0),
-                separated_pair(
-                    ident,
-                    delimited(comment_or_space0, colon, comment_or_space0),
-                    value_,
+        tuple((
+            doc_comment,
+            delimited(
+                terminated(left_brace, comment_or_space0),
+                separated_list(
+                    delimited(comment_or_space0, comma, comment_or_space0),
+                    separated_pair(
+                        ident,
+                        delimited(comment_or_space0, colon, comment_or_space0),
+                        value_,
+                    ),
                 ),
+                preceded(comment_or_space0, right_brace),
             ),
-            preceded(comment_or_space0, right_brace),
-        ),
-        Object::from,
+        )),
+        |(comment, key_value_pairs)| {
+            Object::builder()
+                .doc(comment)
+                .values(std::collections::HashMap::from_iter(key_value_pairs))
+                .build()
+        },
     )(input)
 }
 
 #[cfg(test)]
 mod object_tests {
-    use super::*;
+    use super::object;
+    use crate::object as obj;
 
     #[test]
     fn test_object() {
@@ -1282,6 +1476,19 @@ mod object_tests {
         let input = "{}";
         let result = object(input);
         let expected = obj!({});
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_object_with_doc_comments() {
+        let input = "\
+/// A doc
+//
+/// Comment
+
+{}";
+        let result = object(input);
+        let expected = obj!({}, [" A doc", " Comment"]);
         assert_successful_parse!(result, expected);
     }
 
@@ -1332,7 +1539,8 @@ pub fn value_list(input: &str) -> IResult<&str, Vec<Value>> {
 
 #[cfg(test)]
 mod value_list_tests {
-    use super::*;
+    use super::value_list;
+    use crate::value as val;
 
     #[test]
     fn test_value_list() {
@@ -1370,7 +1578,8 @@ pub fn value_(input: &str) -> IResult<&str, Value> {
 
 #[cfg(test)]
 mod value_tests {
-    use super::*;
+    use super::{value_, Scalar, Single, Value};
+    use crate::value as val;
 
     #[test]
     fn test_value_single_value() {
@@ -1438,21 +1647,22 @@ pub fn default_value(input: &str) -> IResult<&str, DefaultValue> {
 
 #[cfg(test)]
 mod default_value_tests {
-    use super::*;
+    use super::default_value;
+    use crate::default_value as defval;
 
     #[test]
     fn test_default_value() {
         let result = default_value("1");
-        assert_successful_parse!(result, default_value!(1));
+        assert_successful_parse!(result, defval!(1));
 
         let result = default_value("Foo");
-        assert_successful_parse!(result, default_value!("Foo"));
+        assert_successful_parse!(result, defval!("Foo"));
 
         let result = default_value("false");
-        assert_successful_parse!(result, default_value!(false));
+        assert_successful_parse!(result, defval!(false));
 
         let result = default_value("true");
-        assert_successful_parse!(result, default_value!(true));
+        assert_successful_parse!(result, defval!(true));
     }
 }
 
@@ -1504,7 +1714,8 @@ pub fn table_decl(input: &str) -> IResult<&str, Table> {
 
 #[cfg(test)]
 mod table_tests {
-    use super::*;
+    use super::{table_decl, Field, Ident, QualifiedIdent, Table, Type};
+    use crate::{default_value, field, meta, table};
 
     #[test]
     fn test_empty_table_no_spaces() {
@@ -1525,6 +1736,35 @@ table HelloReply {
     }
 
     #[test]
+    fn test_table_with_doc_commented_fields() {
+        let input = "\
+/// A response with a required field
+table HelloReply {
+
+  /// Sweet, sweet message
+  message: string;
+  // Not a doc comment
+  /// A doc comment
+  foo: [string];
+  // Aha!
+
+  bar: [float64];
+
+}";
+        let result = table_decl(input);
+        let expected = table!(
+            HelloReply,
+            [
+                field!(message, String, [" Sweet, sweet message"]),
+                field!(foo, [String], [" A doc comment"]),
+                field!(bar, [Float64])
+            ],
+            [" A response with a required field"]
+        );
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
     fn test_table_with_required_field() {
         let input = "\
 /// A response with a required field
@@ -1534,8 +1774,8 @@ table HelloReply {
         let result = table_decl(input);
         let expected = table!(
             HelloReply,
-            doc!(" A response with a required field"),
-            [field!(message, String, [meta!(required)])]
+            [field!(message, String, [meta!(required)])],
+            [" A response with a required field"]
         );
         assert_successful_parse!(result, expected);
     }
@@ -1559,12 +1799,12 @@ foo :uint=3;//baz
         let result = table_decl(input);
         let expected = table!(
             HelloReply,
-            doc!(" My awesome table!"),
             [
                 field!(message, String),
                 field!(foo, UInt = 3),
                 field!(bar, [Int8])
-            ]
+            ],
+            [" My awesome table!"]
         );
         assert_successful_parse!(result, expected);
     }
@@ -1583,12 +1823,12 @@ table HelloReply
         let result = table_decl(input);
         let expected = table!(
             HelloReply,
-            doc!(" My awesome table!"),
             [
                 field!(message, String),
                 field!(foo, UInt = 3),
                 field!(bar, [Int8])
-            ]
+            ],
+            [" My awesome table!"]
         );
         assert_successful_parse!(result, expected);
     }
@@ -1636,14 +1876,16 @@ pub fn dec_integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
 
 #[cfg(test)]
 mod dec_integer_constant_tests {
-    use super::*;
+    use super::{dec_integer_constant, IntegerConstant};
+    use anyhow::Result;
+    use std::convert::TryFrom;
 
     #[test]
     fn test_u64() -> Result<()> {
         let u64_max = std::u64::MAX;
         let u64_max_string = u64_max.to_string();
         let result = dec_integer_constant(&u64_max_string);
-        let expected: IntegerConstant = u64_max.try_into()?;
+        let expected = IntegerConstant::try_from(u64_max)?;
         assert_successful_parse!(result, expected);
         Ok(())
     }
@@ -1653,7 +1895,7 @@ mod dec_integer_constant_tests {
         let i64_max = std::i64::MAX;
         let i64_max_string = i64_max.to_string();
         let result = dec_integer_constant(&i64_max_string);
-        let expected: IntegerConstant = i64_max.try_into()?;
+        let expected = IntegerConstant::try_from(i64_max)?;
         assert_successful_parse!(result, expected);
         Ok(())
     }
@@ -1663,7 +1905,7 @@ mod dec_integer_constant_tests {
         let i64_min = std::i64::MIN;
         let i64_min_string = i64_min.to_string();
         let result = dec_integer_constant(&i64_min_string);
-        let expected: IntegerConstant = i64_min.try_into()?;
+        let expected = IntegerConstant::try_from(i64_min)?;
         assert_successful_parse!(result, expected);
         Ok(())
     }
@@ -1699,7 +1941,7 @@ pub fn hex_integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
 
 #[cfg(test)]
 mod hex_integer_constant_tests {
-    use super::*;
+    use super::hex_integer_constant;
 
     #[test]
     fn test_hex_integer_constant() {
@@ -1733,7 +1975,7 @@ pub fn false_(input: &str) -> IResult<&str, BooleanConstant> {
 
 #[cfg(test)]
 mod true_false_tests {
-    use super::*;
+    use super::{false_, true_};
 
     #[test]
     fn test_true() {
@@ -1780,7 +2022,7 @@ pub fn boolean_constant(input: &str) -> IResult<&str, bool> {
 
 #[cfg(test)]
 mod boolean_constant_tests {
-    use super::*;
+    use super::boolean_constant;
 
     #[test]
     fn test_boolean_constant() {
@@ -1822,7 +2064,7 @@ pub fn dec_float_constant(input: &str) -> IResult<&str, FloatingConstant> {
 
 #[cfg(test)]
 mod dec_float_constant_tests {
-    use super::*;
+    use super::dec_float_constant;
 
     #[test]
     fn test_dec_float_constant() {
@@ -1843,7 +2085,7 @@ pub fn float_constant(input: &str) -> IResult<&str, FloatingConstant> {
 
 #[cfg(test)]
 mod float_constant_tests {
-    use super::*;
+    use super::{assert_eq, float_constant};
 
     #[test]
     fn test_float_constant_nan() {
@@ -1948,7 +2190,7 @@ pub fn nan(input: &str) -> IResult<&str, FloatingConstant> {
 
 #[cfg(test)]
 mod nan_tests {
-    use super::*;
+    use super::{assert_eq, nan};
 
     #[test]
     fn test_nan() {
@@ -1996,7 +2238,7 @@ pub fn inf_or_infinity(input: &str) -> IResult<&str, FloatingConstant> {
 
 #[cfg(test)]
 mod inf_or_infinity_tests {
-    use super::*;
+    use super::inf_or_infinity;
 
     #[test]
     fn test_inf_or_infinity_infinity() {
@@ -2027,7 +2269,7 @@ pub fn special_float_constant(input: &str) -> IResult<&str, FloatingConstant> {
 
 #[cfg(test)]
 mod special_float_constant_tests {
-    use super::*;
+    use super::{assert_eq, special_float_constant};
 
     #[test]
     fn test_special_float_constant_nan() {
@@ -2075,7 +2317,7 @@ pub fn integer_constant(input: &str) -> IResult<&str, IntegerConstant> {
 
 #[cfg(test)]
 mod integer_constant_tests {
-    use super::*;
+    use super::integer_constant;
 
     #[test]
     fn test_integer_constant() {
@@ -2109,7 +2351,8 @@ pub fn file_extension_decl(input: &str) -> IResult<&str, FileExtension> {
 
 #[cfg(test)]
 mod file_extension_tests {
-    use super::*;
+    use super::file_extension_decl;
+    use crate::file_ext;
 
     #[test]
     fn test_file_extension_decl_with_comments() {
@@ -2118,41 +2361,55 @@ mod file_extension_tests {
         // foo
             \"foo\"//baz\n\t;",
         );
-        let expected = FileExtension::builder().ext("foo").build();
+        let expected = file_ext!("foo");
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_file_extension_decl_with_doc_comments() {
+        let result = file_extension_decl(
+            "\
+/// Doc1
+//
+
+/// Doc2
+file_extension \"foo\";",
+        );
+        let expected = file_ext!("foo", [" Doc1", " Doc2"]);
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_extension_decl() {
         let result = file_extension_decl("file_extension \"foo\";");
-        let expected = FileExtension::builder().ext("foo").build();
+        let expected = file_ext!("foo");
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_extension_decl_no_leading_space() {
         let result = file_extension_decl("file_extension\"foo\";");
-        let expected = FileExtension::builder().ext("foo").build();
+        let expected = file_ext!("foo");
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_extension_decl_trailing_space() {
         let result = file_extension_decl("file_extension \"foo\"  ;");
-        let expected = FileExtension::builder().ext("foo").build();
+        let expected = file_ext!("foo");
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_extension_decl_surrounding_space() {
         let result = file_extension_decl("file_extension   \"foo\"  ;");
-        let expected = FileExtension::builder().ext("foo").build();
+        let expected = file_ext!("foo");
         assert_successful_parse!(result, expected);
     }
 }
 
 pub fn file_identifier_decl(input: &str) -> IResult<&str, FileIdentifier> {
-    map(
+    map_res(
         tuple((
             doc_comment,
             delimited(
@@ -2161,7 +2418,7 @@ pub fn file_identifier_decl(input: &str) -> IResult<&str, FileIdentifier> {
                     comment_or_space0,
                     delimited(
                         double_quote,
-                        tuple((anychar, anychar, anychar, anychar)),
+                        nom::bytes::complete::take(4_usize),
                         double_quote,
                     ),
                     comment_or_space0,
@@ -2169,18 +2426,31 @@ pub fn file_identifier_decl(input: &str) -> IResult<&str, FileIdentifier> {
                 semicolon,
             ),
         )),
-        |(comment, (first, second, third, fourth))| {
-            FileIdentifier::builder()
+        |(comment, id)| {
+            let id_bytes = id.as_bytes();
+            let num_id_bytes = id_bytes.len();
+            if num_id_bytes != 4 {
+                return Err(nom::Err::Failure(format!(
+                    "file identifier should be 4 bytes long, got {} bytes",
+                    num_id_bytes
+                )));
+            }
+            let mut buf = [0u8; 4];
+            buf.copy_from_slice(id_bytes);
+            Ok(FileIdentifier::builder()
                 .doc(comment)
-                .id([first, second, third, fourth])
-                .build()
+                // The `anychar` combinator only matches a byte, so the conversion here cannot be
+                // incorrect if indeed that is what `anychar` does
+                .id(buf)
+                .build())
         },
     )(input)
 }
 
 #[cfg(test)]
 mod file_identifier_tests {
-    use super::*;
+    use super::file_identifier_decl;
+    use crate::file_id;
 
     #[test]
     fn test_file_identifier_decl_with_comments() {
@@ -2188,36 +2458,55 @@ mod file_identifier_tests {
             "file_identifier // baz
             \t\t\"PAR3\"// buz!\n\t;",
         );
-        let expected = FileIdentifier::builder().id(['P', 'A', 'R', '3']).build();
+        let expected = file_id!(b"PAR3");
+        assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_file_identifier_decl_with_doc_comments() {
+        let input = "\
+/// Some file id
+
+//
+/// Doc 2
+file_identifier \"PAR3\";";
+        let result = file_identifier_decl(input);
+        let expected = file_id!(b"PAR3", [" Some file id", " Doc 2"]);
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_identifier_decl() {
         let result = file_identifier_decl("file_identifier \"PAR3\";");
-        let expected = FileIdentifier::builder().id(['P', 'A', 'R', '3']).build();
+        let expected = file_id!(b"PAR3");
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_identifier_decl_no_leading_space() {
         let result = file_identifier_decl("file_identifier\"BAAR\";");
-        let expected = FileIdentifier::builder().id(['B', 'A', 'A', 'R']).build();
+        let expected = file_id!(b"BAAR");
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_identifier_decl_trailing_space() {
         let result = file_identifier_decl("file_identifier \"DEF1\"  ;");
-        let expected = FileIdentifier::builder().id(['D', 'E', 'F', '1']).build();
+        let expected = file_id!(b"DEF1");
         assert_successful_parse!(result, expected);
     }
 
     #[test]
     fn test_file_identifier_decl_surrounding_space() {
         let result = file_identifier_decl("file_identifier   \"ABCD\"  ;");
-        let expected = FileIdentifier::builder().id(['A', 'B', 'C', 'D']).build();
+        let expected = file_id!(b"ABCD");
         assert_successful_parse!(result, expected);
+    }
+
+    #[test]
+    fn test_file_identifier_decl_with_multibyte_char() {
+        let result = file_identifier_decl("file_identifier \"❤234\";");
+        assert_failed_parse!(result, "file_identifier \"❤234\";", MapRes);
     }
 }
 
@@ -2228,7 +2517,10 @@ pub fn raw_doc_comment(input: &str) -> IResult<&str, &str> {
 
 /// Parse zero or more lines of documentation comments
 pub fn doc_comment_lines(input: &str) -> IResult<&str, Vec<&str>> {
-    many0(terminated(raw_doc_comment, line_ending))(input)
+    many0(terminated(
+        terminated(raw_doc_comment, line_ending),
+        comment_or_space0,
+    ))(input)
 }
 
 /// Wrap zero or more lines of documentation comments in an AST node.
@@ -2238,7 +2530,7 @@ pub fn doc_comment(input: &str) -> IResult<&str, Comment> {
 
 #[cfg(test)]
 mod comment_tests {
-    use super::*;
+    use super::{comment, doc_comment, doc_comment_lines, raw_doc_comment, Comment};
 
     #[test]
     fn test_empty_comment() {

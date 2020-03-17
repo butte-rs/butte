@@ -104,7 +104,7 @@ pub struct FileExtension<'a> {
 /// A magic number for using flatbuffers as a file format.
 #[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
 pub struct FileIdentifier<'a> {
-    pub id: [char; 4],
+    pub id: [u8; 4],
 
     #[builder(default)]
     pub doc: Comment<'a>,
@@ -123,9 +123,6 @@ pub struct Namespace<'a> {
 #[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
 pub struct Attribute<'a> {
     pub attr: Ident<'a>,
-
-    #[builder(default)]
-    pub doc: Comment<'a>,
 }
 
 /// Struct type. Structs are product types where fields are always required.
@@ -295,6 +292,9 @@ pub struct EnumVal<'a> {
     /// An optional enum value.
     #[builder(default)]
     pub value: Option<IntegerConstant>,
+
+    #[builder(default)]
+    pub doc: Comment<'a>,
 }
 
 /// Key-value pair metadata.
@@ -336,6 +336,9 @@ impl From<i32> for Scalar {
 pub struct Object<'a> {
     #[builder(default)]
     pub values: HashMap<Ident<'a>, Value<'a>>,
+
+    #[builder(default)]
+    pub doc: Comment<'a>,
 }
 
 impl<'a> From<Vec<(Ident<'a>, Value<'a>)>> for Object<'a> {

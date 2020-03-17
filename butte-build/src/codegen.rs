@@ -437,12 +437,30 @@ impl ToTokens for ir::Table<'_> {
         });
 
         let field_accessors = fields.iter().map(|field| {
-            let snake_name = format_ident!("{}", field.ident.as_ref().to_snake_case());
-            let snake_name_str = snake_name.to_string();
+            let ir::Field {
+                ident,
+                ty,
+                metadata,
+                doc,
+                ..
+            } = field;
             let offset_name = offset_id(field);
-            let ty = &field.ty;
-            let ty_ret = to_type_token(table_ns_ref, ty, &quote!('_), &quote!(butte::ForwardsUOffset), false);
-            let ty_wrapped = to_type_token(table_ns_ref, ty, &quote!('_), &quote!(butte::ForwardsUOffset), true);
+            let snake_name = format_ident!("{}", ident.as_ref().to_snake_case());
+            let snake_name_str = snake_name.to_string();
+            let ty_ret = to_type_token(
+                table_ns_ref,
+                ty,
+                &quote!('_),
+                &quote!(butte::ForwardsUOffset),
+                false,
+            );
+            let ty_wrapped = to_type_token(
+                table_ns_ref,
+                ty,
+                &quote!('_),
+                &quote!(butte::ForwardsUOffset),
+                true,
+            );
 
             let allow_type_complexity = if ty.is_complex() {
                 quote!(#[allow(clippy::type_complexity)])
@@ -476,6 +494,7 @@ impl ToTokens for ir::Table<'_> {
                         |ir::UnionVariant {
                              ident: variant_ident,
                              ty: variant_ty,
+                             ..
                          }| {
                             let variant_ty_wrapped = to_type_token(table_ns_ref,
                                 variant_ty,
@@ -504,6 +523,7 @@ impl ToTokens for ir::Table<'_> {
                         |ir::UnionVariant {
                              ident: variant_ident,
                              ty: variant_ty,
+                             ..
                          }| {
                             let variant_ty_wrapped = to_type_token(table_ns_ref,
                                 variant_ty,
@@ -529,8 +549,9 @@ impl ToTokens for ir::Table<'_> {
                         }
                     }
                 }
-            } else if field.metadata.required {
+            } else if metadata.required {
                 quote! {
+                    #doc
                     #[inline]
                     #allow_type_complexity
                     pub fn #snake_name(&self) -> Result<#ty_ret, butte::Error> {
@@ -541,6 +562,7 @@ impl ToTokens for ir::Table<'_> {
                 }
             } else {
                 quote! {
+                    #doc
                     #[inline]
                     #allow_type_complexity
                     pub fn #snake_name(&self) -> Result<Option<#ty_ret>, butte::Error> {
@@ -761,22 +783,27 @@ impl ToTokens for ir::Enum<'_> {
 
         // assign a value to the key if one was given, otherwise give it the
         // enumerated index's value
-        let variants_and_scalars =
-            values
-                .iter()
-                .enumerate()
-                .map(|(i, ir::EnumVal { ident: key, value })| {
-                    // format the value with the correct type, i.e., base_type
-                    let scalar_value = lit_int(
-                        if let Some(constant) = *value {
-                            constant
-                        } else {
-                            i.try_into().expect("invalid conversion to enum base type")
-                        },
-                        base_type.to_token_stream(),
-                    );
-                    (quote!(#key), quote!(#scalar_value))
-                });
+        let variants_and_scalars = values.iter().enumerate().map(
+            |(
+                i,
+                ir::EnumVal {
+                    ident: key,
+                    value,
+                    doc,
+                },
+            )| {
+                // format the value with the correct type, i.e., base_type
+                let scalar_value = lit_int(
+                    if let Some(constant) = *value {
+                        constant
+                    } else {
+                        i.try_into().expect("invalid conversion to enum base type")
+                    },
+                    base_type.to_token_stream(),
+                );
+                (quote!(#key), quote!(#scalar_value), doc)
+            },
+        );
 
         let raw_snake_enum_name = enum_id.raw.as_ref().to_snake_case();
         let enum_id_fn_name = format_ident!("enum_name_{}", raw_snake_enum_name);
@@ -784,7 +811,7 @@ impl ToTokens for ir::Enum<'_> {
         let from_base_to_enum_variants =
             variants_and_scalars
                 .clone()
-                .map(|(variant_name, scalar_value)| {
+                .map(|(variant_name, scalar_value, _)| {
                     quote! {
                         #scalar_value => Ok(<#enum_id>::#variant_name)
                     }
@@ -793,14 +820,15 @@ impl ToTokens for ir::Enum<'_> {
         let from_enum_variant_to_base =
             variants_and_scalars
                 .clone()
-                .map(|(variant_name, scalar_value)| {
+                .map(|(variant_name, scalar_value, _)| {
                     quote! {
                         <#enum_id>::#variant_name => #scalar_value
                     }
                 });
 
-        let fields = variants_and_scalars.map(|(variant_name, scalar_value)| {
+        let fields = variants_and_scalars.map(|(variant_name, scalar_value, doc)| {
             quote! {
+                #doc
                 #variant_name = #scalar_value
             }
         });
@@ -890,10 +918,12 @@ impl ToTokens for ir::Union<'_> {
             |ir::UnionVariant {
                  ident: variant_ident,
                  ty: variant_ty,
+                 doc,
              }| {
                 let variant_ty_token =
                     to_type_token(union_ns_ref, variant_ty, &quote!('a), &quote!(), false);
                 quote! {
+                    #doc
                     #variant_ident(#variant_ty_token)
                 }
             },
@@ -959,15 +989,14 @@ impl<'a> CodeGenerator<'a> {
         rpc_gen: &mut Option<Box<dyn RpcGenerator>>,
         tokens: &mut TokenStream,
     ) {
-        // the following constructs are (or should be) handled at the file
-        // level:
+        // The following constructs are (or should be) handled at the file level:
         // * Namespaces
         // * Root types
         // * File extensions
         // * File identifiers
         //
-        // Additionally, attributes do not have corresponding concrete code
-        // generated, they are used to *affect* codegen of other items.
+        // Additionally, attributes do not have corresponding concrete code generated, they are
+        // used to *affect* codegen of other items.
         match node {
             ir::Node::Table(t) => t.to_tokens(tokens),
             // ir::Node::Struct(_) => unimplemented!(),
