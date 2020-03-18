@@ -190,6 +190,30 @@ fn to_type_token(
     }
 }
 
+/// A trait to format literals according to a provided type.
+trait PrimitiveLiteralToken {
+    /// The type of the token that will be returned formatted according to the provided type.
+    type TokenType;
+
+    fn fmt_lit(&self, ty: impl Spanned + fmt::Display) -> Self::TokenType;
+}
+
+impl PrimitiveLiteralToken for ast::IntegerConstant {
+    type TokenType = syn::LitInt;
+
+    fn fmt_lit(&self, ty: impl Spanned + fmt::Display) -> Self::TokenType {
+        Self::TokenType::new(&format!("{}_{}", self, ty), ty.span())
+    }
+}
+
+impl PrimitiveLiteralToken for ast::FloatingConstant {
+    type TokenType = syn::LitFloat;
+
+    fn fmt_lit(&self, ty: impl Spanned + fmt::Display) -> Self::TokenType {
+        Self::TokenType::new(&format!("{}_{}", self, ty), ty.span())
+    }
+}
+
 /// Convert a `types::ast::DefaultValue` to a default field value
 fn to_default_value(
     arg_ty: &impl ToTokens,
@@ -197,7 +221,11 @@ fn to_default_value(
 ) -> impl ToTokens + fmt::Debug + ToString {
     match default_value {
         // Scalar field
-        ast::DefaultValue::Scalar(s) => s.to_token_stream(),
+        ast::DefaultValue::Scalar(s) => match s {
+            ast::Scalar::Integer(i) => i.fmt_lit(arg_ty.to_token_stream()).to_token_stream(),
+            ast::Scalar::Float(f) => f.fmt_lit(arg_ty.to_token_stream()).to_token_stream(),
+            ast::Scalar::Boolean(b) => b.to_token_stream(),
+        },
         // Enum field default variant
         ast::DefaultValue::Ident(i) => {
             let variant = format_ident!("{}", i.raw);
@@ -830,11 +858,6 @@ impl ToTokens for ir::QualifiedIdent<'_> {
     }
 }
 
-fn lit_int(value: impl Display, base_type: impl Spanned + Display) -> impl ToTokens {
-    let stringified_int = format!("{}_{}", value, base_type);
-    syn::LitInt::new(&stringified_int, base_type.span())
-}
-
 impl ToTokens for ir::Enum<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self {
@@ -857,34 +880,30 @@ impl ToTokens for ir::Enum<'_> {
 
         let default_value = values
             .iter()
-            .map(|ir::EnumVal { ident: key, .. }| {
-                quote! {
-                    #enum_id::#key
-                }
-            })
+            .map(|ir::EnumVal { ident: key, .. }| quote!(#enum_id::#key))
             .next();
 
         // assign a value to the key if one was given, otherwise give it the
         // enumerated index's value
         let variants_and_scalars = values.iter().enumerate().map(
             |(
-                i,
-                ir::EnumVal {
-                    ident: key,
+                index,
+                &ir::EnumVal {
+                    ident: ref key,
                     value,
-                    doc,
+                    ref doc,
                 },
             )| {
                 // format the value with the correct type, i.e., base_type
-                let scalar_value = lit_int(
-                    if let Some(constant) = *value {
-                        constant
-                    } else {
-                        i.try_into().expect("invalid conversion to enum base type")
-                    },
-                    base_type.to_token_stream(),
-                );
-                (quote!(#key), quote!(#scalar_value), doc)
+                let scalar_value = if let Some(constant) = value {
+                    constant
+                } else {
+                    index
+                        .try_into()
+                        .expect("invalid conversion to enum base type")
+                };
+                let formatted_value = scalar_value.fmt_lit(base_type.to_token_stream());
+                (quote!(#key), quote!(#formatted_value), doc)
             },
         );
 
