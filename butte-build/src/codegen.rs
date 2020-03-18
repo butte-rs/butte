@@ -756,7 +756,7 @@ impl ToTokens for ir::Enum<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self {
             ident: enum_id,
-            values,
+            variants,
             base_type,
             doc,
             ..
@@ -765,16 +765,16 @@ impl ToTokens for ir::Enum<'_> {
         let enum_id = enum_id.simple();
         // generate enum variant name => string name of the variant for use in
         // a match statement
-        let names_to_strings = values.iter().map(|ir::EnumVal { ident: key, .. }| {
+        let names_to_strings = variants.iter().map(|ir::EnumVariant { ident: key, .. }| {
             let raw_key = key.raw.as_ref();
             quote! {
                 #enum_id::#key => #raw_key
             }
         });
 
-        let default_value = values
+        let default_value = variants
             .iter()
-            .map(|ir::EnumVal { ident: key, .. }| {
+            .map(|ir::EnumVariant { ident: key, .. }| {
                 quote! {
                     #enum_id::#key
                 }
@@ -783,10 +783,10 @@ impl ToTokens for ir::Enum<'_> {
 
         // assign a value to the key if one was given, otherwise give it the
         // enumerated index's value
-        let variants_and_scalars = values.iter().enumerate().map(
+        let variants_and_scalars = variants.iter().enumerate().map(
             |(
                 i,
-                ir::EnumVal {
+                ir::EnumVariant {
                     ident: key,
                     value,
                     doc,

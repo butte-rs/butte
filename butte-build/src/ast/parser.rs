@@ -678,7 +678,7 @@ attribute a;";
     }
 }
 
-pub fn enum_body(input: &str) -> IResult<&str, Vec<EnumVal>> {
+pub fn enum_body(input: &str) -> IResult<&str, Vec<EnumVariant>> {
     delimited(
         delimited(comment_or_space0, left_brace, comment_or_space0),
         terminated(
@@ -703,12 +703,12 @@ pub fn enum_decl(input: &str) -> IResult<&str, Enum> {
         metadata,
         enum_body,
     ));
-    map(parser, |(comment, name, base_type, metadata, values)| {
+    map(parser, |(comment, name, base_type, metadata, variants)| {
         Enum::builder()
             .doc(comment)
             .id(name)
             .base_type(base_type)
-            .values(values)
+            .variants(variants)
             .metadata(metadata)
             .build()
     })(input)
@@ -790,11 +790,11 @@ pub fn union_decl(input: &str) -> IResult<&str, Union> {
         metadata,
         enum_body,
     ));
-    map(parser, |(comment, name, metadata, values)| {
+    map(parser, |(comment, name, metadata, variants)| {
         Union::builder()
             .doc(comment)
             .id(name)
-            .values(values)
+            .variants(variants)
             .metadata(metadata)
             .build()
     })(input)
@@ -1307,7 +1307,7 @@ pub fn type_(input: &str) -> IResult<&str, Type> {
 }
 
 /// Parse the individual items of an enum or union.
-pub fn enumval_decl(input: &str) -> IResult<&str, EnumVal> {
+pub fn enumval_decl(input: &str) -> IResult<&str, EnumVariant> {
     let parser = tuple((
         doc_comment,
         ident,
@@ -1317,7 +1317,11 @@ pub fn enumval_decl(input: &str) -> IResult<&str, EnumVal> {
         )),
     ));
     map(parser, |(comment, id, value)| {
-        EnumVal::builder().id(id).value(value).doc(comment).build()
+        EnumVariant::builder()
+            .id(id)
+            .value(value)
+            .doc(comment)
+            .build()
     })(input)
 }
 
