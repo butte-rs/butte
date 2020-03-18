@@ -242,10 +242,10 @@ impl<'a> Builder<'a> {
 
         let base_type = ir::EnumBaseType::try_from(&e.base_type)
             .map_err(|_| anyhow!("enum has bad base type: {}", ident))?;
-        let values: Vec<_> = e
-            .values
+        let variants: Vec<_> = e
+            .variants
             .iter()
-            .map(|v| ir::EnumVal {
+            .map(|v| ir::EnumVariant {
                 ident: ir::Ident::from(v.id),
                 value: v.value,
                 doc: v.doc.clone(),
@@ -257,7 +257,7 @@ impl<'a> Builder<'a> {
         self.types.insert(
             ident.clone(),
             CustomTypeStatus::Defined(ir::CustomType::Enum {
-                values: values.clone(),
+                variants: variants.clone(),
                 base_type,
             }),
         );
@@ -265,7 +265,7 @@ impl<'a> Builder<'a> {
         let s = ir::Enum {
             ident: ident.clone(),
             base_type,
-            values,
+            variants,
             doc,
         };
 
@@ -284,7 +284,7 @@ impl<'a> Builder<'a> {
         let mut variants = Vec::new();
 
         // Make sure all references to custom types are resolved
-        for f in &u.values {
+        for f in &u.variants {
             let ty = self.try_type(&ast::Type::Ident(ast::QualifiedIdent::from(vec![f.id])));
             if let Some(ty) = ty {
                 let id = &f.id;
@@ -339,12 +339,12 @@ impl<'a> Builder<'a> {
         // There's a max of 255 variants in a union in flatbuffers
         // See https://github.com/google/flatbuffers/issues/4209
         let base_type = ir::EnumBaseType::UByte;
-        let values: Vec<_> = std::iter::once(ir::EnumVal {
+        let variants: Vec<_> = std::iter::once(ir::EnumVariant {
             ident: ir::Ident::from("None"),
             value: Some(0.into()),
             doc: vec![].into(),
         })
-        .chain(u.values.iter().map(|v| ir::EnumVal {
+        .chain(u.variants.iter().map(|v| ir::EnumVariant {
             ident: v.id.into(),
             value: None,
             doc: v.doc.clone(),
@@ -356,7 +356,7 @@ impl<'a> Builder<'a> {
         self.types.insert(
             ident.clone(),
             CustomTypeStatus::Defined(ir::CustomType::Enum {
-                values: values.clone(),
+                variants: variants.clone(),
                 base_type,
             }),
         );
@@ -364,7 +364,7 @@ impl<'a> Builder<'a> {
         Ok(ir::Enum {
             ident: ident.clone(),
             base_type,
-            values,
+            variants,
             doc,
         })
     }
@@ -1102,9 +1102,13 @@ struct Vector3 {
                 ir::Enum::builder()
                     .ident(ir::QualifiedIdent::from("MyEnum"))
                     .base_type(ir::EnumBaseType::UByte)
-                    .values(vec![
-                        ir::EnumVal::builder().ident(ir::Ident::from("Foo")).build(),
-                        ir::EnumVal::builder().ident(ir::Ident::from("Bar")).build(),
+                    .variants(vec![
+                        ir::EnumVariant::builder()
+                            .ident(ir::Ident::from("Foo"))
+                            .build(),
+                        ir::EnumVariant::builder()
+                            .ident(ir::Ident::from("Bar"))
+                            .build(),
                     ])
                     .build(),
             )],
@@ -1138,13 +1142,17 @@ struct Vector3 {
                             ir::Enum::builder()
                                 .ident(ir::QualifiedIdent::parse_str("butte_gen.AorBType"))
                                 .base_type(ir::EnumBaseType::UByte)
-                                .values(vec![
-                                    ir::EnumVal::builder()
+                                .variants(vec![
+                                    ir::EnumVariant::builder()
                                         .ident(ir::Ident::from("None"))
                                         .value(Some(0.into()))
                                         .build(),
-                                    ir::EnumVal::builder().ident(ir::Ident::from("A")).build(),
-                                    ir::EnumVal::builder().ident(ir::Ident::from("B")).build(),
+                                    ir::EnumVariant::builder()
+                                        .ident(ir::Ident::from("A"))
+                                        .build(),
+                                    ir::EnumVariant::builder()
+                                        .ident(ir::Ident::from("B"))
+                                        .build(),
                                 ])
                                 .build(),
                         )])
@@ -1234,16 +1242,16 @@ struct Vector3 {
                             ir::Enum::builder()
                                 .ident(ir::QualifiedIdent::parse_str("butte_gen.AorBType"))
                                 .base_type(ir::EnumBaseType::UByte)
-                                .values(vec![
-                                    ir::EnumVal::builder()
+                                .variants(vec![
+                                    ir::EnumVariant::builder()
                                         .ident(ir::Ident::from("None"))
                                         .value(Some(0.into()))
                                         .build(),
-                                    ir::EnumVal::builder()
+                                    ir::EnumVariant::builder()
                                         .ident(ir::Ident::from("A"))
                                         .doc(vec![" Multiple", " lines", " of comments."].into())
                                         .build(),
-                                    ir::EnumVal::builder()
+                                    ir::EnumVariant::builder()
                                         .ident(ir::Ident::from("B"))
                                         .doc(vec![" Comments"].into())
                                         .build(),
@@ -1311,12 +1319,12 @@ struct Vector3 {
                                     ir::CustomTypeRef::builder()
                                         .ident(ir::QualifiedIdent::parse_str("butte_gen.AorBType"))
                                         .ty(ir::CustomType::Enum {
-                                            values: vec![
-                                                ir::EnumVal::builder()
+                                            variants: vec![
+                                                ir::EnumVariant::builder()
                                                     .ident(ir::Ident::from("None"))
                                                     .value(Some(0.into()))
                                                     .build(),
-                                                ir::EnumVal::builder()
+                                                ir::EnumVariant::builder()
                                                     .ident(ir::Ident::from("A"))
                                                     .doc(
                                                         vec![
@@ -1327,7 +1335,7 @@ struct Vector3 {
                                                         .into(),
                                                     )
                                                     .build(),
-                                                ir::EnumVal::builder()
+                                                ir::EnumVariant::builder()
                                                     .ident(ir::Ident::from("B"))
                                                     .doc(vec![" Comments"].into())
                                                     .build(),
