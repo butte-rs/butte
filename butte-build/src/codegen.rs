@@ -888,14 +888,14 @@ impl ToTokens for ir::Enum<'_> {
         let variants_and_scalars = values.iter().enumerate().map(
             |(
                 index,
-                &ir::EnumVal {
-                    ident: ref key,
+                ir::EnumVal {
+                    ident: key,
                     value,
-                    ref doc,
+                    doc,
                 },
             )| {
                 // format the value with the correct type, i.e., base_type
-                let scalar_value = if let Some(constant) = value {
+                let scalar_value = if let Some(constant) = *value {
                     constant
                 } else {
                     index
