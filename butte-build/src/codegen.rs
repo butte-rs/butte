@@ -9,27 +9,13 @@ use std::{convert::TryInto, fmt};
 use syn::spanned::Spanned;
 
 #[cfg(test)]
-fn to_code(value: impl ToTokens) -> String {
+fn to_code(value: impl ToTokens + fmt::Debug) -> String {
     format!("{}", value.to_token_stream())
 }
 
 #[cfg(test)]
 mod constant_tests {
     use super::*;
-
-    #[test]
-    fn test_visit_floating_constant() {
-        let result = to_code(1.0);
-        let expected = "1f64";
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn test_visit_integer_constant() {
-        let result = to_code(1);
-        let expected = "1i32";
-        assert_eq!(result, expected);
-    }
 
     #[test]
     fn test_visit_string_constant() {
@@ -83,16 +69,6 @@ mod ir_ident_tests {
         let result = to_code(ir::Ident::from("foo"));
         let expected = "foo";
         assert_eq!(result, expected);
-    }
-}
-
-impl ToTokens for ast::Scalar {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        match self {
-            ast::Scalar::Integer(i) => i.to_tokens(tokens),
-            ast::Scalar::Float(f) => f.to_tokens(tokens),
-            ast::Scalar::Boolean(b) => b.to_tokens(tokens),
-        }
     }
 }
 
@@ -202,7 +178,7 @@ impl PrimitiveLiteralToken for ast::IntegerConstant {
     type TokenType = syn::LitInt;
 
     fn fmt_lit(&self, ty: impl Spanned + fmt::Display) -> Self::TokenType {
-        Self::TokenType::new(&format!("{}_{}", self, ty), ty.span())
+        Self::TokenType::new(&format!("{}{}", self, ty), ty.span())
     }
 }
 
@@ -210,7 +186,7 @@ impl PrimitiveLiteralToken for ast::FloatingConstant {
     type TokenType = syn::LitFloat;
 
     fn fmt_lit(&self, ty: impl Spanned + fmt::Display) -> Self::TokenType {
-        Self::TokenType::new(&format!("{}_{}", self, ty), ty.span())
+        Self::TokenType::new(&format!("{}{}", self, ty), ty.span())
     }
 }
 
@@ -234,71 +210,115 @@ fn to_default_value(
     }
 }
 
+/// Convert a `types::ast::DefaultValue` to a doc comment describing the value
+fn to_default_value_doc(
+    ty: &ir::Type<'_>,
+    default_value: &Option<ast::DefaultValue<'_>>,
+) -> impl ToTokens {
+    default_value.as_ref().map_or_else(
+        || quote!(),
+        |default_value| {
+            let doc_value = match default_value {
+                // Scalar field
+                ast::DefaultValue::Scalar(s) => match s {
+                    ast::Scalar::Integer(i) => i
+                        .fmt_lit(to_type_token(None, ty, &quote!(), &quote!(), false))
+                        .to_string(),
+                    ast::Scalar::Float(f) => f
+                        .fmt_lit(to_type_token(None, ty, &quote!(), &quote!(), false))
+                        .to_string(),
+                    ast::Scalar::Boolean(b) => b.to_token_stream().to_string(),
+                },
+                // Enum field default variant
+                ast::DefaultValue::Ident(i) => format!("{}::{}", ty, i.raw),
+            };
+            let doc_string = format!(" The default value for this field is __{}__", doc_value);
+            quote!(#[doc = #doc_string])
+        },
+    )
+}
+
 #[cfg(test)]
 mod to_default_value_tests {
     use super::{quote, to_default_value, to_type_token};
     use crate::{ast::types as ast, ir::types as ir};
 
-    macro_rules! gen_integer_default_value_tests {
-        ([$(($butte_ir_type:ident, $rust_type:ident)),*$(,)?]) => {
+    macro_rules! generate_min_max_tests {
+        ($kind:path, $base_type:ty, $butte_ir_type:ident, $rust_type:ident $(,)?) => {
+            #[test]
+            fn test_to_default_value_min() {
+                let raw_value = std::$rust_type::MIN;
+                let rust_value = raw_value as $base_type;
+                let value = ast::DefaultValue::Scalar($kind(rust_value));
+                let ty =
+                    to_type_token(None, &ir::Type::$butte_ir_type, &quote!(), &quote!(), false);
+                let result = to_default_value(&ty, &value).to_string();
+                let expected = format!("{}{}", raw_value, stringify!($rust_type));
+                assert_eq!(result, expected);
+            }
+
+            #[test]
+            fn test_to_default_value_max() {
+                let raw_value = std::$rust_type::MAX;
+                let rust_value = raw_value as $base_type;
+                let value = ast::DefaultValue::Scalar($kind(rust_value));
+                let ty =
+                    to_type_token(None, &ir::Type::$butte_ir_type, &quote!(), &quote!(), false);
+                let result = to_default_value(&ty, &value).to_string();
+                let expected = format!("{}{}", raw_value, stringify!($rust_type));
+                assert_eq!(result, expected);
+            }
+        };
+    }
+
+    macro_rules! base_type {
+        (Integer) => {
+            $crate::ast::types::IntegerConstant
+        };
+        (Float) => {
+            $crate::ast::types::FloatingConstant
+        };
+    }
+
+    macro_rules! generate_numeric_primitive_tests {
+        ([$(($ast_type:ident, $butte_ir_type:ident, $rust_type:ident)),*$(,)?]) => {
             $(
                 #[allow(non_snake_case)]
                 mod $butte_ir_type {
                     use super::*;
-
-                    #[test]
-                    fn test_to_default_value() {
-                        let value = ast::DefaultValue::Scalar(ast::Scalar::Integer(1));
-                        let ty = to_type_token(None, &ir::Type::$butte_ir_type, &quote!(), &quote!(), false);
-                        let result = to_default_value(&ty, &value).to_string();
-                        let expected = format!("1_{}", stringify!($rust_type));
-                        assert_eq!(result, expected);
-                    }
+                    generate_min_max_tests!(
+                        $crate::ast::types::Scalar::$ast_type,
+                        base_type!($ast_type),
+                        $butte_ir_type,
+                        $rust_type
+                    );
                 }
             )*
         };
     }
 
-    macro_rules! gen_float_default_value_tests {
-        ([$(($butte_ir_type:ident, $rust_type:ident)),*$(,)?]) => {
-            $(
-                #[allow(non_snake_case)]
-                mod $butte_ir_type {
-                    use super::*;
-
-                    #[test]
-                    fn test_to_default_value() {
-                        let value = ast::DefaultValue::Scalar(ast::Scalar::Float(1.2));
-                        let ty = to_type_token(None, &ir::Type::$butte_ir_type, &quote!(), &quote!(), false);
-                        let result = to_default_value(&ty, &value).to_string();
-                        let expected = format!("1.2_{}", stringify!($rust_type));
-                        assert_eq!(result, expected);
-                    }
-                }
-            )*
-        };
-    }
-
-    gen_integer_default_value_tests!([
-        (Byte, i8),
-        (UByte, u8),
-        (Short, i16),
-        (UShort, u16),
-        (Int, i32),
-        (UInt, u32),
-        (Long, i64),
-        (ULong, u64),
-        (Int8, i8),
-        (UInt8, u8),
-        (Int16, i16),
-        (UInt16, u16),
-        (Int32, i32),
-        (UInt32, u32),
-        (Int64, i64),
-        (UInt64, u64),
+    generate_numeric_primitive_tests!([
+        (Integer, Byte, i8),
+        (Integer, UByte, u8),
+        (Integer, Short, i16),
+        (Integer, UShort, u16),
+        (Integer, Int, i32),
+        (Integer, UInt, u32),
+        (Integer, Long, i64),
+        (Integer, ULong, u64),
+        (Integer, Int8, i8),
+        (Integer, UInt8, u8),
+        (Integer, Int16, i16),
+        (Integer, UInt16, u16),
+        (Integer, Int32, i32),
+        (Integer, UInt32, u32),
+        (Integer, Int64, i64),
+        (Integer, UInt64, u64),
+        (Float, Float, f32),
+        (Float, Double, f64),
+        (Float, Float32, f32),
+        (Float, Float64, f64),
     ]);
-
-    gen_float_default_value_tests!([(Float, f32), (Double, f64), (Float32, f32), (Float64, f64),]);
 
     #[test]
     fn test_to_default_value_true() {
@@ -314,25 +334,6 @@ mod to_default_value_tests {
         let ty = to_type_token(None, &ir::Type::Bool, &quote!(), &quote!(), false);
         let result = to_default_value(&ty, &value).to_string();
         assert_eq!(result, "false".to_string());
-    }
-}
-
-/// Convert a `types::ast::DefaultValue` to a doc comment describing the value
-fn to_default_value_doc(
-    ty: &impl fmt::Display,
-    default_value: &Option<ast::DefaultValue<'_>>,
-) -> impl ToTokens {
-    if let Some(default_value) = default_value {
-        let doc_value = match default_value {
-            // Scalar field
-            ast::DefaultValue::Scalar(s) => s.to_token_stream().to_string(),
-            // Enum field default variant
-            ast::DefaultValue::Ident(i) => format!("{}::{}", ty, i.raw),
-        };
-        let doc_string = format!(" The default value for this field is __{}__", doc_value);
-        quote!(#[doc = #doc_string])
-    } else {
-        quote!()
     }
 }
 
@@ -463,7 +464,11 @@ impl ToTokens for ir::Table<'_> {
                         else {
                             // numeric types
                             let default_val = match default_value {
-                                ast::DefaultValue::Scalar(s) => quote!(#s),
+                                ast::DefaultValue::Scalar(s) => match s {
+                                    ast::Scalar::Integer(i) => i.fmt_lit(arg_ty).to_token_stream(),
+                                    ast::Scalar::Float(f) => f.fmt_lit(arg_ty).to_token_stream(),
+                                    ast::Scalar::Boolean(b) => quote!(#b),
+                                },
                                 _ => panic!("expecting numeric default"),
                             };
                             quote!(#field_id: #default_val)
