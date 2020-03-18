@@ -211,13 +211,81 @@ mod to_default_value_tests {
     use super::{quote, to_default_value, to_type_token};
     use crate::{ast::types as ast, ir::types as ir};
 
+    macro_rules! gen_integer_default_value_tests {
+        ([$(($butte_ir_type:ident, $rust_type:ident)),*$(,)?]) => {
+            $(
+                #[allow(non_snake_case)]
+                mod $butte_ir_type {
+                    use super::*;
+
+                    #[test]
+                    fn test_to_default_value() {
+                        let value = ast::DefaultValue::Scalar(ast::Scalar::Integer(1));
+                        let ty = to_type_token(None, &ir::Type::$butte_ir_type, &quote!(), &quote!(), false);
+                        let result = to_default_value(&ty, &value).to_string();
+                        let expected = format!("1_{}", stringify!($rust_type));
+                        assert_eq!(result, expected);
+                    }
+                }
+            )*
+        };
+    }
+
+    macro_rules! gen_float_default_value_tests {
+        ([$(($butte_ir_type:ident, $rust_type:ident)),*$(,)?]) => {
+            $(
+                #[allow(non_snake_case)]
+                mod $butte_ir_type {
+                    use super::*;
+
+                    #[test]
+                    fn test_to_default_value() {
+                        let value = ast::DefaultValue::Scalar(ast::Scalar::Float(1.2));
+                        let ty = to_type_token(None, &ir::Type::$butte_ir_type, &quote!(), &quote!(), false);
+                        let result = to_default_value(&ty, &value).to_string();
+                        let expected = format!("1.2_{}", stringify!($rust_type));
+                        assert_eq!(result, expected);
+                    }
+                }
+            )*
+        };
+    }
+
+    gen_integer_default_value_tests!([
+        (Byte, i8),
+        (UByte, u8),
+        (Short, i16),
+        (UShort, u16),
+        (Int, i32),
+        (UInt, u32),
+        (Long, i64),
+        (ULong, u64),
+        (Int8, i8),
+        (UInt8, u8),
+        (Int16, i16),
+        (UInt16, u16),
+        (Int32, i32),
+        (UInt32, u32),
+        (Int64, i64),
+        (UInt64, u64),
+    ]);
+
+    gen_float_default_value_tests!([(Float, f32), (Double, f64), (Float32, f32), (Float64, f64),]);
+
     #[test]
-    fn test_to_default_value_integer() {
-        let value = ast::DefaultValue::Scalar(ast::Scalar::Integer(1i128));
-        let ty = to_type_token(None, &ir::Type::Int64, &quote!(), &quote!(), false);
+    fn test_to_default_value_true() {
+        let value = ast::DefaultValue::Scalar(ast::Scalar::Boolean(true));
+        let ty = to_type_token(None, &ir::Type::Bool, &quote!(), &quote!(), false);
         let result = to_default_value(&ty, &value).to_string();
-        let expected = quote!(1_i64).to_string();
-        assert_eq!(result, expected);
+        assert_eq!(result, "true".to_string());
+    }
+
+    #[test]
+    fn test_to_default_value_false() {
+        let value = ast::DefaultValue::Scalar(ast::Scalar::Boolean(false));
+        let ty = to_type_token(None, &ir::Type::Bool, &quote!(), &quote!(), false);
+        let result = to_default_value(&ty, &value).to_string();
+        assert_eq!(result, "false".to_string());
     }
 }
 
