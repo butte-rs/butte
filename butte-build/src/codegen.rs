@@ -5,7 +5,7 @@ use heck::{ShoutySnakeCase, SnakeCase};
 use itertools::Itertools;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
-use std::{convert::TryInto, fmt::Display};
+use std::{convert::TryInto, fmt};
 use syn::spanned::Spanned;
 
 #[cfg(test)]
@@ -194,7 +194,7 @@ fn to_type_token(
 fn to_default_value(
     arg_ty: &impl ToTokens,
     default_value: &ast::DefaultValue<'_>,
-) -> impl ToTokens {
+) -> impl ToTokens + fmt::Debug + ToString {
     match default_value {
         // Scalar field
         ast::DefaultValue::Scalar(s) => s.to_token_stream(),
@@ -206,9 +206,24 @@ fn to_default_value(
     }
 }
 
+#[cfg(test)]
+mod to_default_value_tests {
+    use super::{quote, to_default_value, to_type_token};
+    use crate::{ast::types as ast, ir::types as ir};
+
+    #[test]
+    fn test_to_default_value_integer() {
+        let value = ast::DefaultValue::Scalar(ast::Scalar::Integer(1i128));
+        let ty = to_type_token(None, &ir::Type::Int64, &quote!(), &quote!(), false);
+        let result = to_default_value(&ty, &value).to_string();
+        let expected = quote!(1_i64).to_string();
+        assert_eq!(result, expected);
+    }
+}
+
 /// Convert a `types::ast::DefaultValue` to a doc comment describing the value
 fn to_default_value_doc(
-    ty: &ir::Type,
+    ty: &impl fmt::Display,
     default_value: &Option<ast::DefaultValue<'_>>,
 ) -> impl ToTokens {
     if let Some(default_value) = default_value {
