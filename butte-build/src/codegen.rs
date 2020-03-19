@@ -1033,3 +1033,31 @@ pub trait RpcGenerator {
     /// result to the provided `token_stream`.
     fn generate<'a>(&mut self, rpc: &ir::Rpc<'a>, token_stream: &mut TokenStream);
 }
+
+#[cfg(test)]
+mod table_tests {
+    use super::*;
+    use crate::{
+        ir::{types::Node, Builder},
+        parser::schema_decl,
+    };
+
+    #[test]
+    fn test_required_fields() {
+        let input = "\
+table Hello {
+  world: string (required);
+  earth: int = 616 (required);
+  universe: string;
+}";
+        let (_, schema) = schema_decl(input).unwrap();
+        let actual = Builder::build(schema).unwrap();
+        match &actual.nodes[0] {
+            Node::Table(table) => {
+                let result = to_code(table);
+                assert_eq!(2, result.matches("required").collect::<Vec<_>>().len());
+            }
+            node => panic!("{:?}", node),
+        }
+    }
+}
