@@ -575,13 +575,16 @@ impl ToTokens for ir::Table<'_> {
 
         let struct_offset_enum_name = format_ident!("{}Offset", raw_struct_name);
 
-        let required_fields = fields.iter().map(|field| {
-            let snake_name = field.ident.as_ref().to_snake_case();
-            let offset_name = offset_id(field);
-            quote! {
-                self.fbb.required(o, #struct_id::#offset_name, #snake_name);
-            }
-        });
+        let required_fields = fields
+            .iter()
+            .filter(|field| field.metadata.required)
+            .map(|field| {
+                let snake_name = field.ident.as_ref().to_snake_case();
+                let offset_name = offset_id(field);
+                quote! {
+                    self.fbb.required(o, #struct_id::#offset_name, #snake_name);
+                }
+            });
 
         (quote! {
             pub enum #struct_offset_enum_name {}
@@ -1029,4 +1032,32 @@ pub trait RpcGenerator {
     /// Generates a Rust interface or implementation for a service, writing the
     /// result to the provided `token_stream`.
     fn generate<'a>(&mut self, rpc: &ir::Rpc<'a>, token_stream: &mut TokenStream);
+}
+
+#[cfg(test)]
+mod table_tests {
+    use super::*;
+    use crate::{
+        ir::{types::Node, Builder},
+        parser::schema_decl,
+    };
+
+    #[test]
+    fn test_required_fields() {
+        let input = "\
+table Hello {
+  world: string (required);
+  earth: int = 616 (required);
+  universe: string;
+}";
+        let (_, schema) = schema_decl(input).unwrap();
+        let actual = Builder::build(schema).unwrap();
+        match &actual.nodes[0] {
+            Node::Table(table) => {
+                let result = to_code(table);
+                assert_eq!(2, result.matches("required").collect::<Vec<_>>().len());
+            }
+            node => panic!("{:?}", node),
+        }
+    }
 }
