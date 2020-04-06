@@ -157,8 +157,13 @@ fn to_type_token(
         }
         ir::Type::Array(ty) => {
             // Arrays wrap the wrapping tokens with Vector
-            let component_token =
-                to_type_token(context_namespace, ty, lifetime, wrap_refs_types, true);
+            let component_token = to_type_token(
+                context_namespace,
+                ty,
+                lifetime,
+                &quote!(butte::ForwardsUOffset),
+                true,
+            );
             let ty = quote!(butte::Vector<#lifetime, #component_token>);
 
             let wrap_tokens = wrap_refs_types.into_token_stream();
