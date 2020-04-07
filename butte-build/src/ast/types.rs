@@ -51,7 +51,7 @@ impl Element<'_> {
     }
 
     /// Return the underlying `Namespace` object from the element if `self` is a `Namespace`.
-    pub fn namespace(&self) -> Option<&Namespace> {
+    pub fn namespace(&self) -> Option<&Namespace<'_>> {
         match self {
             Element::Namespace(ns) => Some(ns),
             _ => None,
