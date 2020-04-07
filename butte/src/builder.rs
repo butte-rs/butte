@@ -15,8 +15,6 @@
 * limitations under the License.
 */
 
-extern crate smallvec;
-
 use std::{cmp::max, marker::PhantomData, ptr::write_bytes, slice::from_raw_parts};
 
 use crate::{
@@ -511,7 +509,7 @@ impl<'fbb> FlatBufferBuilder<'fbb> {
     }
 
     #[inline]
-    fn find_duplicate_stored_vtable_revloc(&self, needle: VTable) -> Option<UOffsetT> {
+    fn find_duplicate_stored_vtable_revloc(&self, needle: VTable<'_>) -> Option<UOffsetT> {
         for &revloc in self.written_vtable_revpos.iter().rev() {
             let o = VTable::init(
                 &self.owned_buf[..],

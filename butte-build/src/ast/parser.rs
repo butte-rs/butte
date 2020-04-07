@@ -113,7 +113,7 @@ pub fn right_square_bracket(input: &str) -> IResult<&str, char> {
     char(']')(input)
 }
 
-pub fn ident(input: &str) -> IResult<&str, Ident> {
+pub fn ident(input: &str) -> IResult<&str, Ident<'_>> {
     map(
         recognize(preceded(
             take_while_m_n(1, 1, |c: char| c.is_alphabetic() || c == '_'),
@@ -197,7 +197,7 @@ mod string_constant_tests {
     }
 }
 
-pub fn element(input: &str) -> IResult<&str, Element> {
+pub fn element(input: &str) -> IResult<&str, Element<'_>> {
     alt((
         map(namespace_decl, Element::from),
         map(table_decl, Element::from),
@@ -256,7 +256,7 @@ pub fn comment_or_space1(input: &str) -> IResult<&str, ()> {
 }
 
 /// Parse a flatbuffer schema.
-pub fn schema_decl(input: &str) -> IResult<&str, Schema> {
+pub fn schema_decl(input: &str) -> IResult<&str, Schema<'_>> {
     map(
         tuple((
             many0(delimited(
@@ -425,7 +425,7 @@ table Hello{
     }
 }
 
-pub fn include_decl(input: &str) -> IResult<&str, Include> {
+pub fn include_decl(input: &str) -> IResult<&str, Include<'_>> {
     map_res(
         tuple((
             doc_comment,
@@ -439,7 +439,7 @@ pub fn include_decl(input: &str) -> IResult<&str, Include> {
                 semicolon,
             ),
         )),
-        |(comment, path)| -> Result<Include> {
+        |(comment, path)| -> Result<Include<'_>> {
             let stem = path
                 .file_stem()
                 .ok_or_else(|| anyhow!("path has no file stem: {:?}", path))?
@@ -508,7 +508,7 @@ mod include_tests {
     }
 }
 
-pub fn qualified_ident(input: &str) -> IResult<&str, QualifiedIdent> {
+pub fn qualified_ident(input: &str) -> IResult<&str, QualifiedIdent<'_>> {
     map(
         separated_nonempty_list(
             delimited(comment_or_space0, tag("."), comment_or_space0),
@@ -518,7 +518,7 @@ pub fn qualified_ident(input: &str) -> IResult<&str, QualifiedIdent> {
     )(input)
 }
 
-pub fn namespace_decl(input: &str) -> IResult<&str, Namespace> {
+pub fn namespace_decl(input: &str) -> IResult<&str, Namespace<'_>> {
     map(
         tuple((
             doc_comment,
@@ -608,7 +608,7 @@ namespace foo;";
     }
 }
 
-pub fn attribute_decl(input: &str) -> IResult<&str, Attribute> {
+pub fn attribute_decl(input: &str) -> IResult<&str, Attribute<'_>> {
     map(
         tuple((
             doc_comment,
@@ -678,7 +678,7 @@ attribute a;";
     }
 }
 
-pub fn enum_body(input: &str) -> IResult<&str, Vec<EnumVariant>> {
+pub fn enum_body(input: &str) -> IResult<&str, Vec<EnumVariant<'_>>> {
     delimited(
         delimited(comment_or_space0, left_brace, comment_or_space0),
         terminated(
@@ -692,7 +692,7 @@ pub fn enum_body(input: &str) -> IResult<&str, Vec<EnumVariant>> {
     )(input)
 }
 
-pub fn enum_decl(input: &str) -> IResult<&str, Enum> {
+pub fn enum_decl(input: &str) -> IResult<&str, Enum<'_>> {
     let parser = tuple((
         doc_comment,
         preceded(
@@ -780,7 +780,7 @@ enum MyEnum : int32 {
     }
 }
 
-pub fn union_decl(input: &str) -> IResult<&str, Union> {
+pub fn union_decl(input: &str) -> IResult<&str, Union<'_>> {
     let parser = tuple((
         doc_comment,
         preceded(
@@ -860,7 +860,7 @@ union MyUnion {
     }
 }
 
-pub fn root_decl(input: &str) -> IResult<&str, Root> {
+pub fn root_decl(input: &str) -> IResult<&str, Root<'_>> {
     map(
         tuple((
             doc_comment,
@@ -901,7 +901,7 @@ root_type Foo;";
     }
 }
 
-pub fn field_decl(input: &str) -> IResult<&str, Field> {
+pub fn field_decl(input: &str) -> IResult<&str, Field<'_>> {
     map(
         terminated(
             tuple((
@@ -1073,7 +1073,7 @@ great: int64;";
     }
 }
 
-pub fn rpc_decl(input: &str) -> IResult<&str, Rpc> {
+pub fn rpc_decl(input: &str) -> IResult<&str, Rpc<'_>> {
     map(
         tuple((
             doc_comment,
@@ -1188,7 +1188,7 @@ mod qualified_ident_tests {
     }
 }
 
-pub fn rpc_method(input: &str) -> IResult<&str, RpcMethod> {
+pub fn rpc_method(input: &str) -> IResult<&str, RpcMethod<'_>> {
     map(
         tuple((
             doc_comment,
@@ -1272,7 +1272,7 @@ SayHello // foo
     }
 }
 
-pub fn type_(input: &str) -> IResult<&str, Type> {
+pub fn type_(input: &str) -> IResult<&str, Type<'_>> {
     alt((
         alt((
             value(Type::Bool, tag("bool")),
@@ -1307,7 +1307,7 @@ pub fn type_(input: &str) -> IResult<&str, Type> {
 }
 
 /// Parse the individual items of an enum or union.
-pub fn enumval_decl(input: &str) -> IResult<&str, EnumVariant> {
+pub fn enumval_decl(input: &str) -> IResult<&str, EnumVariant<'_>> {
     let parser = tuple((
         doc_comment,
         ident,
@@ -1326,7 +1326,7 @@ pub fn enumval_decl(input: &str) -> IResult<&str, EnumVariant> {
 }
 
 /// Parse key-value metadata pairs.
-pub fn raw_metadata(input: &str) -> IResult<&str, Metadata> {
+pub fn raw_metadata(input: &str) -> IResult<&str, Metadata<'_>> {
     map(
         delimited(
             terminated(left_paren, comment_or_space0),
@@ -1347,7 +1347,7 @@ pub fn raw_metadata(input: &str) -> IResult<&str, Metadata> {
 }
 
 /// Optionally parse key-value pairs. Metadata is never required wherever it's allowed.
-pub fn metadata(input: &str) -> IResult<&str, Option<Metadata>> {
+pub fn metadata(input: &str) -> IResult<&str, Option<Metadata<'_>>> {
     opt(raw_metadata)(input)
 }
 
@@ -1434,7 +1434,7 @@ pub fn scalar(input: &str) -> IResult<&str, Scalar> {
 }
 
 /// Parse JSON object-like data.
-pub fn object(input: &str) -> IResult<&str, Object> {
+pub fn object(input: &str) -> IResult<&str, Object<'_>> {
     map(
         tuple((
             doc_comment,
@@ -1522,7 +1522,7 @@ mod object_tests {
 }
 
 /// `Single`s are `Scalar`s or `StringConstant`s.
-pub fn single(input: &str) -> IResult<&str, Single> {
+pub fn single(input: &str) -> IResult<&str, Single<'_>> {
     alt((
         map(scalar, Single::from),
         map(string_constant, Single::from),
@@ -1530,7 +1530,7 @@ pub fn single(input: &str) -> IResult<&str, Single> {
 }
 
 /// A value list is a comma-separated list of `Value`s.
-pub fn value_list(input: &str) -> IResult<&str, Vec<Value>> {
+pub fn value_list(input: &str) -> IResult<&str, Vec<Value<'_>>> {
     delimited(
         terminated(left_square_bracket, comment_or_space0),
         separated_list(
@@ -1572,7 +1572,7 @@ mod value_list_tests {
 }
 
 /// `Value`s are `Single`s or `Object`s.
-pub fn value_(input: &str) -> IResult<&str, Value> {
+pub fn value_(input: &str) -> IResult<&str, Value<'_>> {
     alt((
         map(single, Value::from),
         map(object, Value::from),
@@ -1642,7 +1642,7 @@ mod value_tests {
 
 /// `DefaultValue`s are `Scalar`s or `Ident`s
 /// `Ident`s refer to an enum variant on the field type
-pub fn default_value(input: &str) -> IResult<&str, DefaultValue> {
+pub fn default_value(input: &str) -> IResult<&str, DefaultValue<'_>> {
     alt((
         map(scalar, DefaultValue::from),
         map(ident, DefaultValue::from),
@@ -1674,7 +1674,7 @@ mod default_value_tests {
 type ProductTypeTriple<'a> = (Ident<'a>, Option<Metadata<'a>>, Vec<Field<'a>>);
 
 /// Parse the body of a table or struct.
-pub fn product_type_body(input: &str) -> IResult<&str, ProductTypeTriple> {
+pub fn product_type_body(input: &str) -> IResult<&str, ProductTypeTriple<'_>> {
     tuple((
         delimited(comment_or_space1, ident, comment_or_space0),
         terminated(metadata, comment_or_space0),
@@ -1687,7 +1687,7 @@ pub fn product_type_body(input: &str) -> IResult<&str, ProductTypeTriple> {
 }
 
 /// Parse a struct declaration.
-pub fn struct_decl(input: &str) -> IResult<&str, Struct> {
+pub fn struct_decl(input: &str) -> IResult<&str, Struct<'_>> {
     map(
         tuple((doc_comment, preceded(tag("struct"), product_type_body))),
         |(comment, (name, metadata, fields))| {
@@ -1702,7 +1702,7 @@ pub fn struct_decl(input: &str) -> IResult<&str, Struct> {
 }
 
 /// Parse a table declaration.
-pub fn table_decl(input: &str) -> IResult<&str, Table> {
+pub fn table_decl(input: &str) -> IResult<&str, Table<'_>> {
     map(
         tuple((doc_comment, preceded(tag("table"), product_type_body))),
         |(comment, (name, metadata, fields))| {
@@ -2339,7 +2339,7 @@ mod integer_constant_tests {
     }
 }
 
-pub fn file_extension_decl(input: &str) -> IResult<&str, FileExtension> {
+pub fn file_extension_decl(input: &str) -> IResult<&str, FileExtension<'_>> {
     map(
         tuple((
             doc_comment,
@@ -2412,7 +2412,7 @@ file_extension \"foo\";",
     }
 }
 
-pub fn file_identifier_decl(input: &str) -> IResult<&str, FileIdentifier> {
+pub fn file_identifier_decl(input: &str) -> IResult<&str, FileIdentifier<'_>> {
     map_res(
         tuple((
             doc_comment,
@@ -2528,7 +2528,7 @@ pub fn doc_comment_lines(input: &str) -> IResult<&str, Vec<&str>> {
 }
 
 /// Wrap zero or more lines of documentation comments in an AST node.
-pub fn doc_comment(input: &str) -> IResult<&str, Comment> {
+pub fn doc_comment(input: &str) -> IResult<&str, Comment<'_>> {
     map(doc_comment_lines, Comment::from)(input)
 }
 
