@@ -1,6 +1,6 @@
 /// A response from the server
 /// Useful for getting a greeting back!
-namespace foo.bar;
+namespace Foo.Bar;
 
 
 /// Hello there!
@@ -35,7 +35,7 @@ table HelloRequestArray {
   requests: [HelloRequest];
 }
 
-namespace baz.buzz;
+namespace Baz.Buzz;
 
 /// Doc
 enum Foo : int32 {
@@ -58,7 +58,7 @@ table FooBar {
 /// ... with a multiline doc comment?!
 rpc_service Greeter {
   /// More info
-  SayHello(foo.bar.HelloRequest) : foo.bar.HelloReply;
+  SayHello(Foo.Bar.HelloRequest) : Foo.Bar.HelloReply;
   /// Even more info
-  SayManyHellos(foo.bar.ManyHellosRequest) : foo.bar.HelloReply (streaming: "server");
+  SayManyHellos(Foo.Bar.ManyHellosRequest) : Foo.Bar.HelloReply (streaming: "server");
 }

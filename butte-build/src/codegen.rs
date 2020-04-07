@@ -1006,7 +1006,7 @@ impl<'a> CodeGenerator<'a> {
             ir::Node::Enum(e) => e.to_tokens(tokens),
             ir::Node::Union(u) => u.to_tokens(tokens),
             ir::Node::Namespace(n) => {
-                let ident = &n.ident.simple();
+                let ident = format_ident!("{}", n.ident.simple().as_ref().to_snake_case());
                 let mut nodes_ts = TokenStream::default();
                 for node in &n.nodes {
                     self.node_to_tokens(node, rpc_gen, &mut nodes_ts);
