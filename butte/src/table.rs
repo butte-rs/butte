@@ -55,13 +55,17 @@ where
     pub fn get<'a, T: Follow<'a> + 'a>(
         &'a self,
         slot_byte_loc: VOffsetT,
+        default: Option<T::Inner>,
     ) -> Result<Option<T::Inner>, Error> {
         let v_offset = self.vtable()?.get(slot_byte_loc)?;
         if let Some(v_offset) = v_offset {
-            let o = v_offset as usize;
-            <T>::follow(self.buf.as_ref(), self.loc + o).map(Some)
+            let offset = v_offset as usize;
+            if offset == 0 {
+                return Ok(default);
+            }
+            <T>::follow(self.buf.as_ref(), self.loc + offset).map(Some)
         } else {
-            Ok(None)
+            Ok(default)
         }
     }
 }
