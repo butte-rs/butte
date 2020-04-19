@@ -270,7 +270,7 @@ pub enum CustomType<'a> {
         fields: Vec<Field<'a>>,
     },
     Enum {
-        values: Vec<EnumVal<'a>>,
+        variants: Vec<EnumVariant<'a>>,
         base_type: EnumBaseType,
     },
     Union {
@@ -291,7 +291,7 @@ impl<'a> CustomType<'a> {
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Enum<'a> {
     pub ident: QualifiedIdent<'a>,
-    pub values: Vec<EnumVal<'a>>,
+    pub variants: Vec<EnumVariant<'a>>,
     pub base_type: EnumBaseType,
 
     #[builder(default)]
@@ -402,7 +402,7 @@ pub enum RpcStreaming {
 
 impl Default for RpcStreaming {
     fn default() -> Self {
-        RpcStreaming::None
+        Self::None
     }
 }
 
@@ -413,7 +413,7 @@ pub struct RootType<'a> {
 
 /// Type for `Enum` values.
 #[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
-pub struct EnumVal<'a> {
+pub struct EnumVariant<'a> {
     /// The name of the enum value.
     pub ident: Ident<'a>,
 

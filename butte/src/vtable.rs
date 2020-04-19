@@ -26,7 +26,7 @@ pub struct VTable<'a> {
 }
 
 impl<'a> PartialEq for VTable<'a> {
-    fn eq(&self, other: &VTable) -> bool {
+    fn eq(&self, other: &VTable<'_>) -> bool {
         self.as_bytes() == other.as_bytes()
     }
 }

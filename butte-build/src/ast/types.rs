@@ -51,7 +51,7 @@ impl Element<'_> {
     }
 
     /// Return the underlying `Namespace` object from the element if `self` is a `Namespace`.
-    pub fn namespace(&self) -> Option<&Namespace> {
+    pub fn namespace(&self) -> Option<&Namespace<'_>> {
         match self {
             Element::Namespace(ns) => Some(ns),
             _ => None,
@@ -155,7 +155,7 @@ pub struct Table<'a> {
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Enum<'a> {
     pub id: Ident<'a>,
-    pub values: Vec<EnumVal<'a>>,
+    pub variants: Vec<EnumVariant<'a>>,
     pub base_type: Type<'a>,
 
     #[builder(default)]
@@ -169,7 +169,7 @@ pub struct Enum<'a> {
 #[derive(Debug, Clone, PartialEq, TypedBuilder)]
 pub struct Union<'a> {
     pub id: Ident<'a>,
-    pub values: Vec<EnumVal<'a>>,
+    pub variants: Vec<EnumVariant<'a>>,
 
     #[builder(default)]
     pub metadata: Option<Metadata<'a>>,
@@ -285,7 +285,7 @@ pub type BooleanConstant = bool;
 
 /// Type for `Enum`/`Union` values.
 #[derive(Debug, Clone, PartialEq, Hash, Eq, From, TypedBuilder)]
-pub struct EnumVal<'a> {
+pub struct EnumVariant<'a> {
     /// The name of the enum value.
     pub id: Ident<'a>,
 
