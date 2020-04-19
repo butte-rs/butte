@@ -899,7 +899,7 @@ impl ToTokens for ir::Enum<'_> {
         // enumerated index's value
         let variants_and_scalars = variants.iter().enumerate().map(
             |(
-                i,
+                index,
                 ir::EnumVariant {
                     ident: key,
                     value,
