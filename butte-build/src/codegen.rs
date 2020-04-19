@@ -186,7 +186,13 @@ impl PrimitiveLiteralToken for ast::FloatingConstant {
     type TokenType = syn::LitFloat;
 
     fn fmt_lit(&self, ty: impl Spanned + fmt::Display) -> Self::TokenType {
-        Self::TokenType::new(&format!("{}{}", self, ty), ty.span())
+        Self::TokenType::new(
+            &match ty.to_string().as_str() {
+                float_ty @ "f32" => format!("{}{}", *self as f32, float_ty),
+                float_ty => format!("{}{}", self, float_ty),
+            },
+            ty.span(),
+        )
     }
 }
 
