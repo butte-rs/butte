@@ -1,0 +1,21 @@
+namespace DefaultValue;
+
+table Values {
+  bool_implicit: bool;
+  bool_explicit: bool = false;
+  bool_other: bool = true;
+
+  float_implicit: float;
+  float_explicit: float = 0;
+  float_other: float = 1;
+
+  int_implicit: int;
+  int_explicit: int = 0;
+  int_other: int = 1;
+
+  long_implicit: long;
+  long_explicit: long = 0;
+  long_other: long = 1;
+
+  text: string;
+}

@@ -1,6 +1,6 @@
 //! Types representing the parts of a flatbuffer schema
 use derive_more::{AsRef, From};
-use std::{collections::HashMap, iter::FromIterator, path::Path};
+use std::{collections::HashMap, convert::TryFrom, iter::FromIterator, path::Path};
 use typed_builder::TypedBuilder;
 
 /// A Flatbuffer schema.
@@ -389,6 +389,20 @@ impl From<BooleanConstant> for DefaultValue<'_> {
 impl<'a> From<&'a str> for DefaultValue<'a> {
     fn from(value: &'a str) -> Self {
         Ident::from(value).into()
+    }
+}
+
+impl<'a> TryFrom<&Type<'a>> for DefaultValue<'a> {
+    type Error = butte::Error;
+
+    fn try_from(ty: &Type<'a>) -> Result<Self, Self::Error> {
+        match ty {
+            Type::Array(..) | Type::Ident(..) | Type::String => None,
+            Type::Bool => Some(false.into()),
+            Type::Double | Type::Float | Type::Float32 | Type::Float64 => Some((0.0).into()),
+            _ => Some(0.into()),
+        }
+        .ok_or(butte::Error::NoTypeDefaultValue)
     }
 }
 

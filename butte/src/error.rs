@@ -11,10 +11,12 @@ pub enum Error {
     RequiredFieldMissing(&'static str),
     /// Returned if a string is not null-terminated,
     NonNullTerminatedString,
-    // Returned if a buffer refers to an unknown enum variant
+    /// Returned if a buffer refers to an unknown enum variant
     UnknownEnumVariant,
-    // Returned if a buffer refers to an unknown union variant
+    /// Returned if a buffer refers to an unknown union variant
     UnknownUnionVariant,
+    /// Returned if a type doesn't have a default value
+    NoTypeDefaultValue,
 }
 
 impl fmt::Display for Error {
@@ -26,6 +28,7 @@ impl fmt::Display for Error {
             Error::NonNullTerminatedString => write!(f, "string is not terminated with null"),
             Error::UnknownEnumVariant => write!(f, "unknown enum variant"),
             Error::UnknownUnionVariant => write!(f, "unknown union variant"),
+            Error::NoTypeDefaultValue => write!(f, "type does not have a default value"),
         }
     }
 }
