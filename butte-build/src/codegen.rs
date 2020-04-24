@@ -9,7 +9,7 @@ use std::{convert::TryInto, fmt};
 use syn::spanned::Spanned;
 
 #[cfg(test)]
-fn to_code(value: impl ToTokens + fmt::Debug) -> String {
+fn to_code(value: impl ToTokens) -> String {
     format!("{}", value.to_token_stream())
 }
 
