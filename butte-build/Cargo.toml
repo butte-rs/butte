@@ -46,7 +46,7 @@ proc-macro2 = "1.0.9"
 quote = "1.0.3"
 structopt = "0.3.11"
 syn = "1.0.16"
-typed-builder = "0.5.1"
+typed-builder = "0.6.0"
 
 [dev-dependencies]
 pretty_assertions = "0.6.1"
