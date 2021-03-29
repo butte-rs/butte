@@ -39,7 +39,7 @@ butte = { path = "../butte" }
 anyhow = "1.0.26"
 derive_more = { version = "0.99.3", features = ["from", "as_ref"] }
 heck = "0.3.1"
-hexf-parse = "0.1.0"
+hexf-parse = "0.2.0"
 itertools = "0.9.0"
 nom = { version = "5.1.1", features = ["regexp"] }
 proc-macro2 = "1.0.9"
