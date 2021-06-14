@@ -263,7 +263,7 @@ mod to_default_value_tests {
                 let value = ast::DefaultValue::Scalar($kind(rust_value));
                 let ty =
                     to_type_token(None, &ir::Type::$butte_ir_type, &quote!(), &quote!(), false);
-                let result = to_default_value(&ty, &value).to_string();
+                let result = to_default_value(&ty, &value).to_string().replace("- ", "-");
                 let expected = format!("{}{}", raw_value, stringify!($rust_type));
                 assert_eq!(result, expected);
             }
@@ -275,7 +275,10 @@ mod to_default_value_tests {
                 let value = ast::DefaultValue::Scalar($kind(rust_value));
                 let ty =
                     to_type_token(None, &ir::Type::$butte_ir_type, &quote!(), &quote!(), false);
-                let result = to_default_value(&ty, &value).to_string();
+                // Hack: there is no control to make TokenStream::ToString() print tokens without
+                // spaces in between (except running `cargo fmt`), so we're doing replace at the
+                // end to get properly formatted string (e.g. `- 123` -> `-123`).
+                let result = to_default_value(&ty, &value).to_string().replace("- ", "-");
                 let expected = format!("{}{}", raw_value, stringify!($rust_type));
                 assert_eq!(result, expected);
             }
