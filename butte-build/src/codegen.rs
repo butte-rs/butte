@@ -421,7 +421,7 @@ impl ToTokens for ir::Table<'_> {
                 };
 
                 // Scalar or enum fields can have a default value
-                let default_doc = to_default_value_doc(&ty, default_value);
+                let default_doc = to_default_value_doc(ty, default_value);
                 quote! {
                     #default_doc
                     #allow_type_complexity
@@ -537,7 +537,7 @@ impl ToTokens for ir::Table<'_> {
 
             let body = if ty.is_scalar() {
                 if let Some(default_value) = default_value {
-                    let default_value = to_default_value(&arg_ty, &default_value);
+                    let default_value = to_default_value(&arg_ty, default_value);
                     quote!(self.fbb.push_slot::<#arg_ty>(#field_offset, #field_id, #default_value))
                 } else {
                     quote!(self.fbb.push_slot_always::<#arg_ty>(#field_offset, #field_id))
@@ -590,7 +590,7 @@ impl ToTokens for ir::Table<'_> {
                 true,
             );
             let default_value = if let Some(default_value) = default_value {
-                let default_value = to_default_value(&ty_wrapped, &default_value);
+                let default_value = to_default_value(&ty_wrapped, default_value);
                 quote!(Some(#default_value))
             } else {
                 quote!(None)

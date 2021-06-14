@@ -374,7 +374,7 @@ impl<'a> Builder<'a> {
     }
 
     fn new_root_ident(&mut self, ident: &ir::QualifiedIdent<'a>) -> Result<bool> {
-        if let Some(&CustomTypeStatus::Defined(ref def)) = self.types.get(&ident) {
+        if let Some(&CustomTypeStatus::Defined(ref def)) = self.types.get(ident) {
             if def == &ir::CustomType::Table {
                 self.root_types.insert(ident.clone());
                 Ok(true)
@@ -509,7 +509,7 @@ impl<'a> Builder<'a> {
                 }
             }
             ast::Type::Ident(qualified_ident) => {
-                let ident = self.make_fully_qualified_from_ast_qualified_ident(&qualified_ident);
+                let ident = self.make_fully_qualified_from_ast_qualified_ident(qualified_ident);
 
                 return self.find_custom_type(ident);
             }
