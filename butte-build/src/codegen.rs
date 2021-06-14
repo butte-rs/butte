@@ -226,6 +226,7 @@ fn to_default_value_doc(
     ty: &ir::Type<'_>,
     default_value: &Option<ast::DefaultValue<'_>>,
 ) -> impl ToTokens {
+    #[allow(clippy::redundant_closure)] // Ignore this warning because quote!() is macro.
     default_value.as_ref().map_or_else(
         || quote!(),
         |default_value| {
