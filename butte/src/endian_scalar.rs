@@ -30,6 +30,7 @@ use std::mem::size_of;
 /// invalid FlatBuffers type.
 pub trait EndianScalar: Sized + PartialEq + Copy + Clone {
     fn to_little_endian(self) -> Self;
+    #[allow(clippy::wrong_self_convention)]
     fn from_little_endian(self) -> Self;
 }
 
@@ -174,7 +175,7 @@ pub fn read_scalar_at<T: EndianScalar>(s: &[u8], loc: usize) -> Result<T, Error>
 pub fn read_scalar<T: EndianScalar>(s: &[u8]) -> Result<T, Error> {
     let sz = size_of::<T>();
 
-    let p = (&s.get(..sz).ok_or(Error::OutOfBounds)?).as_ptr() as *const T;
+    let p = s.get(..sz).ok_or(Error::OutOfBounds)?.as_ptr() as *const T;
     let x = unsafe { *p };
 
     Ok(x.from_little_endian())

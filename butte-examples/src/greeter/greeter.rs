@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use butte as fb;
 
 pub mod greeter {
-    butte_build::include_fbs!("greeter");
+    butte::include_fbs!("greeter");
 }
 
 fn main() -> Result<()> {

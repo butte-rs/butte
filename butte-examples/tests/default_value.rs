@@ -1,5 +1,5 @@
 pub mod tests {
-    butte_build::include_fbs!("default_value");
+    butte::include_fbs!("default_value");
 }
 
 use anyhow::Result;

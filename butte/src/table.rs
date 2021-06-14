@@ -40,11 +40,11 @@ where
     B: std::convert::AsRef<[u8]>,
 {
     pub fn get_root(buf: B) -> Result<Self, Error> {
-        Ok(<ForwardsUOffset<Self>>::follow_buf(buf, 0)?)
+        <ForwardsUOffset<Self>>::follow_buf(buf, 0)
     }
 
     pub fn get_size_prefixed_root(buf: B) -> Result<Self, Error> {
-        Ok(<SkipSizePrefix<ForwardsUOffset<Self>>>::follow_buf(buf, 0)?)
+        <SkipSizePrefix<ForwardsUOffset<Self>>>::follow_buf(buf, 0)
     }
 
     pub fn vtable<'a>(&'a self) -> Result<VTable<'a>, Error> {

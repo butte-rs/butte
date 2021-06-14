@@ -261,10 +261,7 @@ impl Type<'_> {
         // TODO: enums are scalars, tables are not -- what about structs?
         // we might need more context to determine if the type is a scalar
         // to catch errors early
-        match self {
-            Type::String | Type::Array(_) => false,
-            _ => true,
-        }
+        !matches!(self, Type::String | Type::Array(_))
     }
 }
 

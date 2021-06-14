@@ -5,7 +5,7 @@
 /// ```ignore
 /// # // This doesn't compile, because OUT_DIR isn't set
 /// mod greeter {
-///     butte_build::include_fbs!("greeter");
+///     butte::include_fbs!("greeter");
 /// }
 /// ```
 #[macro_export]

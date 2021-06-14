@@ -1,7 +1,7 @@
 //! Test for https://github.com/butte-rs/butte/issues/39
 
 pub mod tests {
-    butte_build::include_fbs!("array");
+    butte::include_fbs!("array");
 }
 
 use anyhow::{anyhow, Result};

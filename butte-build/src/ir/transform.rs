@@ -107,10 +107,7 @@ impl<'a> Builder<'a> {
             let ty = self.try_type(&f.ty);
             if let Some(ty) = ty {
                 let required = match &f.metadata {
-                    Some(m) => match m.values.get(&ast::Ident::from("required")) {
-                        Some(None) => true,
-                        _ => false,
-                    },
+                    Some(m) => matches!(m.values.get(&ast::Ident::from("required")), Some(None)),
                     None => false,
                 };
 
@@ -377,7 +374,7 @@ impl<'a> Builder<'a> {
     }
 
     fn new_root_ident(&mut self, ident: &ir::QualifiedIdent<'a>) -> Result<bool> {
-        if let Some(&CustomTypeStatus::Defined(ref def)) = self.types.get(&ident) {
+        if let Some(&CustomTypeStatus::Defined(ref def)) = self.types.get(ident) {
             if def == &ir::CustomType::Table {
                 self.root_types.insert(ident.clone());
                 Ok(true)
@@ -512,7 +509,7 @@ impl<'a> Builder<'a> {
                 }
             }
             ast::Type::Ident(qualified_ident) => {
-                let ident = self.make_fully_qualified_from_ast_qualified_ident(&qualified_ident);
+                let ident = self.make_fully_qualified_from_ast_qualified_ident(qualified_ident);
 
                 return self.find_custom_type(ident);
             }
@@ -596,7 +593,7 @@ impl<'a> Builder<'a> {
             .into_iter()
             .collect();
 
-        let namespaces_idents: BTreeSet<_> = elements.keys().cloned().filter_map(|id| id).collect();
+        let namespaces_idents: BTreeSet<_> = elements.keys().cloned().flatten().collect();
 
         let mut namespaces: Vec<_> = namespaces_idents
             .into_iter()

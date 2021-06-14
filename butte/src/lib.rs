@@ -33,6 +33,7 @@ mod builder;
 mod endian_scalar;
 mod error;
 mod follow;
+mod macros;
 mod primitives;
 mod push;
 mod table;

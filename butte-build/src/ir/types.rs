@@ -180,30 +180,27 @@ impl<'a> Type<'a> {
     }
 
     pub fn is_union(&self) -> bool {
-        match self {
-            Type::Custom(CustomTypeRef { ty, .. }) => match ty {
-                CustomType::Union { .. } => true,
-                _ => false,
-            },
-            _ => false,
-        }
+        matches!(
+            self,
+            Type::Custom(CustomTypeRef {
+                ty: CustomType::Union { .. },
+                ..
+            })
+        )
     }
 
     pub fn is_enum(&self) -> bool {
-        match self {
-            Type::Custom(CustomTypeRef { ty, .. }) => match ty {
-                CustomType::Enum { .. } => true,
-                _ => false,
-            },
-            _ => false,
-        }
+        matches!(
+            self,
+            Type::Custom(CustomTypeRef {
+                ty: CustomType::Enum { .. },
+                ..
+            })
+        )
     }
 
     pub fn is_array(&self) -> bool {
-        match self {
-            Type::Array(..) => true,
-            _ => false,
-        }
+        matches!(self, Type::Array(..))
     }
 
     // Is it a complex type that will trigger Clippy warnings
@@ -217,10 +214,10 @@ impl<'a> Type<'a> {
     // This method lets us generate the companion type name from the union.
     pub fn make_union_enum_type_companion(&self) -> Option<&QualifiedIdent<'a>> {
         match self {
-            Type::Custom(CustomTypeRef { ty, .. }) => match ty {
-                CustomType::Union { ref enum_ident, .. } => Some(enum_ident),
-                _ => None,
-            },
+            Type::Custom(CustomTypeRef {
+                ty: CustomType::Union { ref enum_ident, .. },
+                ..
+            }) => Some(enum_ident),
             _ => None,
         }
     }
@@ -281,10 +278,7 @@ pub enum CustomType<'a> {
 
 impl<'a> CustomType<'a> {
     pub fn is_scalar(&self) -> bool {
-        match self {
-            CustomType::Struct { .. } | CustomType::Enum { .. } => true,
-            _ => false,
-        }
+        matches!(self, CustomType::Struct { .. } | CustomType::Enum { .. })
     }
 }
 

@@ -1,8 +1,6 @@
 pub mod codegen;
 mod compile;
 
-mod macros;
-
 pub mod ast;
 pub mod ir;
 

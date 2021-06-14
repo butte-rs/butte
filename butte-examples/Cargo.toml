@@ -14,7 +14,6 @@ path = "src/greeter/greeter.rs"
 
 [dependencies]
 anyhow = "1.0.26"
-butte-build = { path = "../butte-build" }
 butte = { path = "../butte" }
 
 [build-dependencies]

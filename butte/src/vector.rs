@@ -52,9 +52,10 @@ impl<'a, T: 'a> Vector<'a, T> {
         }
     }
 
+    #[allow(clippy::len_without_is_empty)]
     #[inline(always)]
     pub fn len(&self) -> Result<usize, Error> {
-        Ok(read_scalar_at::<UOffsetT>(&self.0, self.1)? as usize)
+        Ok(read_scalar_at::<UOffsetT>(self.0, self.1)? as usize)
     }
     #[inline(always)]
     pub fn is_empty(&self) -> Result<bool, Error> {
@@ -65,7 +66,7 @@ impl<'a, T: 'a> Vector<'a, T> {
 impl<'a, T: Follow<'a> + 'a> Vector<'a, T> {
     #[inline(always)]
     pub fn get(&self, idx: usize) -> Result<T::Inner, Error> {
-        debug_assert!(idx < read_scalar_at::<u32>(&self.0, self.1)? as usize);
+        debug_assert!(idx < read_scalar_at::<u32>(self.0, self.1)? as usize);
         let sz = size_of::<T>();
         debug_assert!(sz > 0);
         T::follow(self.0, self.1 as usize + SIZE_UOFFSET + sz * idx)
@@ -87,7 +88,7 @@ impl<'a, T: SafeSliceAccess + 'a> Vector<'a, T> {
         let loc = self.1;
         let sz = size_of::<T>();
         debug_assert!(sz > 0);
-        let len = read_scalar_at::<UOffsetT>(&buf, loc)? as usize;
+        let len = read_scalar_at::<UOffsetT>(buf, loc)? as usize;
         let data_buf = buf
             .get(loc + SIZE_UOFFSET..loc + SIZE_UOFFSET + len * sz)
             .ok_or(Error::OutOfBounds)?;
@@ -137,7 +138,7 @@ impl<'a> Follow<'a> for &'a str {
     type Inner = &'a str;
     fn follow(buf: &'a [u8], loc: usize) -> Result<Self::Inner, Error> {
         // Len of the String/Vector
-        let len = read_scalar_at::<UOffsetT>(&buf, loc)? as usize;
+        let len = read_scalar_at::<UOffsetT>(buf, loc)? as usize;
 
         let end_loc = loc + SIZE_UOFFSET + len;
 
@@ -163,7 +164,7 @@ impl<'a> Follow<'a> for &'a str {
 fn follow_slice_helper<T>(buf: &[u8], loc: usize) -> Result<&[T], Error> {
     let sz = size_of::<T>();
     debug_assert!(sz > 0);
-    let len = read_scalar_at::<UOffsetT>(&buf, loc)? as usize;
+    let len = read_scalar_at::<UOffsetT>(buf, loc)? as usize;
     let data_buf = buf
         .get(loc + SIZE_UOFFSET..loc + SIZE_UOFFSET + len * sz)
         .ok_or(Error::OutOfBounds)?;

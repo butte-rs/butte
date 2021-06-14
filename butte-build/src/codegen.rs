@@ -226,6 +226,7 @@ fn to_default_value_doc(
     ty: &ir::Type<'_>,
     default_value: &Option<ast::DefaultValue<'_>>,
 ) -> impl ToTokens {
+    #[allow(clippy::redundant_closure)] // Ignore this warning because quote!() is macro.
     default_value.as_ref().map_or_else(
         || quote!(),
         |default_value| {
@@ -263,7 +264,7 @@ mod to_default_value_tests {
                 let value = ast::DefaultValue::Scalar($kind(rust_value));
                 let ty =
                     to_type_token(None, &ir::Type::$butte_ir_type, &quote!(), &quote!(), false);
-                let result = to_default_value(&ty, &value).to_string();
+                let result = to_default_value(&ty, &value).to_string().replace("- ", "-");
                 let expected = format!("{}{}", raw_value, stringify!($rust_type));
                 assert_eq!(result, expected);
             }
@@ -275,7 +276,10 @@ mod to_default_value_tests {
                 let value = ast::DefaultValue::Scalar($kind(rust_value));
                 let ty =
                     to_type_token(None, &ir::Type::$butte_ir_type, &quote!(), &quote!(), false);
-                let result = to_default_value(&ty, &value).to_string();
+                // Hack: there is no control to make TokenStream::ToString() print tokens without
+                // spaces in between (except running `cargo fmt`), so we're doing replace at the
+                // end to get properly formatted string (e.g. `- 123` -> `-123`).
+                let result = to_default_value(&ty, &value).to_string().replace("- ", "-");
                 let expected = format!("{}{}", raw_value, stringify!($rust_type));
                 assert_eq!(result, expected);
             }
@@ -421,7 +425,7 @@ impl ToTokens for ir::Table<'_> {
                 };
 
                 // Scalar or enum fields can have a default value
-                let default_doc = to_default_value_doc(&ty, default_value);
+                let default_doc = to_default_value_doc(ty, default_value);
                 quote! {
                     #default_doc
                     #allow_type_complexity
@@ -537,7 +541,7 @@ impl ToTokens for ir::Table<'_> {
 
             let body = if ty.is_scalar() {
                 if let Some(default_value) = default_value {
-                    let default_value = to_default_value(&arg_ty, &default_value);
+                    let default_value = to_default_value(&arg_ty, default_value);
                     quote!(self.fbb.push_slot::<#arg_ty>(#field_offset, #field_id, #default_value))
                 } else {
                     quote!(self.fbb.push_slot_always::<#arg_ty>(#field_offset, #field_id))
@@ -590,7 +594,7 @@ impl ToTokens for ir::Table<'_> {
                 true,
             );
             let default_value = if let Some(default_value) = default_value {
-                let default_value = to_default_value(&ty_wrapped, &default_value);
+                let default_value = to_default_value(&ty_wrapped, default_value);
                 quote!(Some(#default_value))
             } else {
                 quote!(None)
@@ -604,15 +608,12 @@ impl ToTokens for ir::Table<'_> {
             if ty.is_union() {
                 let (union_ident, enum_ident, variants) = match ty {
                     ir::Type::Custom(ir::CustomTypeRef {
-                        ty,
-                        ident: ref union_ident,
-                    }) => match ty {
-                        ir::CustomType::Union {
+                        ty: ir::CustomType::Union {
                             ref variants,
                             ref enum_ident,
-                        } => (union_ident, enum_ident, variants),
-                        _ => panic!("type is union"),
-                    },
+                        },
+                        ident: ref union_ident,
+                    }) => (union_ident, enum_ident, variants),
                     _ => panic!("type is union"),
                 };
 
@@ -638,7 +639,7 @@ impl ToTokens for ir::Table<'_> {
                             quote! {
                                 #enum_ident::#variant_ident => #union_ident::#variant_ident(self.table
                                     .get::<#variant_ty_wrapped>(#struct_id::#offset_name, None)?
-                                    .ok_or_else(|| butte::Error::RequiredFieldMissing(#snake_name_str))?)
+                                    .ok_or(butte::Error::RequiredFieldMissing(#snake_name_str))?)
                             }
                         },
                     );
@@ -688,9 +689,9 @@ impl ToTokens for ir::Table<'_> {
                     #[inline]
                     #allow_type_complexity
                     pub fn #snake_name(&self) -> Result<#ty_ret, butte::Error> {
-                        Ok(self.table
+                        self.table
                             .get::<#ty_wrapped>(#struct_id::#offset_name, #default_value)?
-                            .ok_or_else(|| butte::Error::RequiredFieldMissing(#snake_name_str))?)
+                            .ok_or(butte::Error::RequiredFieldMissing(#snake_name_str))
                     }
                 }
             } else {
