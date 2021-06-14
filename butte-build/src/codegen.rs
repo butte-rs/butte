@@ -635,7 +635,7 @@ impl ToTokens for ir::Table<'_> {
                             quote! {
                                 #enum_ident::#variant_ident => #union_ident::#variant_ident(self.table
                                     .get::<#variant_ty_wrapped>(#struct_id::#offset_name, None)?
-                                    .ok_or_else(|| butte::Error::RequiredFieldMissing(#snake_name_str))?)
+                                    .ok_or(butte::Error::RequiredFieldMissing(#snake_name_str))?)
                             }
                         },
                     );
@@ -685,9 +685,9 @@ impl ToTokens for ir::Table<'_> {
                     #[inline]
                     #allow_type_complexity
                     pub fn #snake_name(&self) -> Result<#ty_ret, butte::Error> {
-                        Ok(self.table
+                        self.table
                             .get::<#ty_wrapped>(#struct_id::#offset_name, #default_value)?
-                            .ok_or_else(|| butte::Error::RequiredFieldMissing(#snake_name_str))?)
+                            .ok_or(butte::Error::RequiredFieldMissing(#snake_name_str))
                     }
                 }
             } else {
