@@ -52,6 +52,7 @@ impl<'a, T: 'a> Vector<'a, T> {
         }
     }
 
+    #[allow(clippy::len_without_is_empty)]
     #[inline(always)]
     pub fn len(&self) -> Result<usize, Error> {
         Ok(read_scalar_at::<UOffsetT>(&self.0, self.1)? as usize)

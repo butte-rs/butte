@@ -107,10 +107,7 @@ impl<'a> Builder<'a> {
             let ty = self.try_type(&f.ty);
             if let Some(ty) = ty {
                 let required = match &f.metadata {
-                    Some(m) => match m.values.get(&ast::Ident::from("required")) {
-                        Some(None) => true,
-                        _ => false,
-                    },
+                    Some(m) => matches!(m.values.get(&ast::Ident::from("required")), Some(None)),
                     None => false,
                 };
 
@@ -596,7 +593,7 @@ impl<'a> Builder<'a> {
             .into_iter()
             .collect();
 
-        let namespaces_idents: BTreeSet<_> = elements.keys().cloned().filter_map(|id| id).collect();
+        let namespaces_idents: BTreeSet<_> = elements.keys().cloned().flatten().collect();
 
         let mut namespaces: Vec<_> = namespaces_idents
             .into_iter()

@@ -604,15 +604,12 @@ impl ToTokens for ir::Table<'_> {
             if ty.is_union() {
                 let (union_ident, enum_ident, variants) = match ty {
                     ir::Type::Custom(ir::CustomTypeRef {
-                        ty,
-                        ident: ref union_ident,
-                    }) => match ty {
-                        ir::CustomType::Union {
+                        ty: ir::CustomType::Union {
                             ref variants,
                             ref enum_ident,
-                        } => (union_ident, enum_ident, variants),
-                        _ => panic!("type is union"),
-                    },
+                        },
+                        ident: ref union_ident,
+                    }) => (union_ident, enum_ident, variants),
                     _ => panic!("type is union"),
                 };
 

@@ -30,6 +30,7 @@ use std::mem::size_of;
 /// invalid FlatBuffers type.
 pub trait EndianScalar: Sized + PartialEq + Copy + Clone {
     fn to_little_endian(self) -> Self;
+    #[allow(clippy::wrong_self_convention)]
     fn from_little_endian(self) -> Self;
 }
 
