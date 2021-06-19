@@ -707,8 +707,6 @@ impl ToTokens for ir::Table<'_> {
             }
         });
 
-        let struct_offset_enum_name = format_ident!("{}Offset", raw_struct_name);
-
         let required_fields = fields
             .iter()
             .filter(|field| field.metadata.required)
@@ -721,8 +719,6 @@ impl ToTokens for ir::Table<'_> {
             });
 
         (quote! {
-            pub enum #struct_offset_enum_name {}
-
             #[derive(Copy, Clone, Debug, PartialEq)]
             #doc
             pub struct #struct_id<B> {

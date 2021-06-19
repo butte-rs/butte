@@ -51,7 +51,7 @@ pub use crate::{
     primitives::*,
     push::Push,
     table::{buffer_has_identifier, get_root, get_size_prefixed_root, Table},
-    vector::{follow_cast_ref, SafeSliceAccess, Vector},
+    vector::{follow_cast_ref, SafeSliceAccess, Vector, VectorIter},
     vtable::field_index_to_field_offset,
 };
 
