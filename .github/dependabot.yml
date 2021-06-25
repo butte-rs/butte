@@ -1,0 +1,20 @@
+version: 2
+updates:
+- package-ecosystem: cargo
+  directory: "/"
+  schedule:
+    interval: daily
+  open-pull-requests-limit: 10
+  ignore:
+  - dependency-name: hexf-parse
+    versions:
+    - 0.2.0
+  - dependency-name: pretty_assertions
+    versions:
+    - 0.7.1
+  - dependency-name: nom
+    versions:
+    - 6.1.0
+  - dependency-name: typed-builder
+    versions:
+    - 0.8.0
